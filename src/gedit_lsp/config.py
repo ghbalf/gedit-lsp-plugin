@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,10 @@ class Config:
         self._root_markers: dict[str, list[str]] = {}
         self._initialization_options: dict[str, Any] = {}
         self._tunables: dict[str, Any] = {}
+        self._observers: list[Callable[[], None]] = []
+
+    def add_observer(self, callback: Callable[[], None]) -> None:
+        self._observers.append(callback)
 
     def load(self) -> None:
         self._servers = copy.deepcopy(BUILTIN_SERVERS)
@@ -62,6 +67,9 @@ class Config:
 
         for k, v in (user.get("tunables") or {}).items():
             self._tunables[k] = v
+
+        for cb in self._observers:
+            cb()
 
     def server_for(self, language_id: str) -> dict[str, Any] | None:
         return self._servers.get(language_id)

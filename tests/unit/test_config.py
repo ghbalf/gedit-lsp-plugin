@@ -110,3 +110,27 @@ def test_initialization_options_none_for_missing_language(tmp_path: Path) -> Non
     cfg = Config(user_path=tmp_path / "missing.json")
     cfg.load()
     assert cfg.initialization_options_for("python") is None
+
+
+def test_reload_picks_up_changes(tmp_path: Path) -> None:
+    user = tmp_path / "lsp-plugin.json"
+    write_json(user, {"servers": {"python": {"command": ["a"]}}})
+    cfg = Config(user_path=user)
+    cfg.load()
+    assert cfg.server_for("python")["command"] == ["a"]
+
+    write_json(user, {"servers": {"python": {"command": ["b"]}}})
+    cfg.load()  # explicit reload
+    assert cfg.server_for("python")["command"] == ["b"]
+
+
+def test_observer_called_on_reload(tmp_path: Path) -> None:
+    user = tmp_path / "lsp-plugin.json"
+    write_json(user, {})
+    cfg = Config(user_path=user)
+    cfg.load()
+    calls: list[str] = []
+    cfg.add_observer(lambda: calls.append("reload"))
+    write_json(user, {"servers": {"python": {"command": ["x"]}}})
+    cfg.load()
+    assert calls == ["reload"]
