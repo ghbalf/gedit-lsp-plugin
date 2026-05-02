@@ -20,7 +20,7 @@ def test_encode_simple_message() -> None:
 
 
 def test_encode_utf8_multibyte_body() -> None:
-    body = '{"v":"héllo"}'.encode("utf-8")
+    body = '{"v":"héllo"}'.encode()
     framed = encode_frame(body)
     # Header counts BYTES, not chars
     expected_header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
