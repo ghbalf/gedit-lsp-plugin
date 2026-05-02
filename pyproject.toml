@@ -1,0 +1,38 @@
+[project]
+name = "gedit-lsp"
+version = "0.1.0a0"
+description = "Language Server Protocol client plugin for gedit"
+authors = [{ name = "Alfred Mickautsch", email = "alfred@mickautsch.de" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "hypothesis>=6.92",
+    "pyfakefs>=5.3",
+    "ruff>=0.1.6",
+    "mypy>=1.7",
+    "PyGObject-stubs>=2.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true  # PyGObject stubs are best-effort
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
