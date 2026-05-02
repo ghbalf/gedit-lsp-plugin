@@ -15,7 +15,7 @@ dev = [
     "pyfakefs>=5.3",
     "ruff>=0.1.6",
     "mypy>=1.7",
-    "PyGObject-stubs>=2.10",
+    "PyGObject-stubs<2.10",  # 2.10+ requires PyGObject>=3.55 (GLib 2.80 / girepository-2.0)
 ]
 
 [tool.ruff]
