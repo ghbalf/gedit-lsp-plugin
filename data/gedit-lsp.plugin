@@ -1,0 +1,10 @@
+[Plugin]
+Module=gedit_lsp
+Loader=python3
+IAge=3
+Name=LSP
+Description=Language Server Protocol client for gedit
+Authors=Alfred Mickautsch <alfred@mickautsch.de>
+Copyright=Copyright © 2026 Alfred Mickautsch (MIT-licensed source; combined work GPL-2.0+)
+Website=
+Version=0.1.0
