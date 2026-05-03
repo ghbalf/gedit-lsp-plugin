@@ -121,6 +121,13 @@ class LanguageServer:
         if self.state == ServerState.CIRCUIT_OPEN:
             self.state = ServerState.NOT_RUNNING
 
+    def send_notification(self, method: str, params: Any) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {"jsonrpc": "2.0", "method": method, "params": params}
+        )
+
     # --- internal ---
 
     def _spawn_and_initialize(self) -> None:
