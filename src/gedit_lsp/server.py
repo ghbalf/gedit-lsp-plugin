@@ -76,6 +76,7 @@ class LanguageServer:
         self._req_ids = itertools.count(1)
         self._failed_starts = 0
         self._idle_source_id: int | None = None
+        self._diagnostics_listeners: list[Callable[[dict[str, Any]], None]] = []
 
     @property
     def next_restart_delay(self) -> int:
@@ -120,6 +121,11 @@ class LanguageServer:
         self._failed_starts = 0
         if self.state == ServerState.CIRCUIT_OPEN:
             self.state = ServerState.NOT_RUNNING
+
+    def add_diagnostics_listener(
+        self, callback: Callable[[dict[str, Any]], None]
+    ) -> None:
+        self._diagnostics_listeners.append(callback)
 
     def send_notification(self, method: str, params: Any) -> None:
         if self._transport is None:
@@ -169,8 +175,9 @@ class LanguageServer:
         self.state = ServerState.READY
 
     def _on_diagnostics(self, msg: dict[str, Any]) -> None:
-        # Routed to controllers via signal in real impl; no-op in state machine
-        pass
+        params = msg.get("params", {})
+        for cb in self._diagnostics_listeners:
+            cb(params)
 
     def _handle_failed_start(self) -> None:
         self._failed_starts += 1

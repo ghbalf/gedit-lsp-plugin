@@ -43,7 +43,6 @@ def test_clears_then_applies_tags() -> None:
     if tag is None:
         return  # never created — fine
     start = buf.get_start_iter()
-    end = buf.get_end_iter()
     assert not start.starts_tag(tag) and not start.has_tag(tag)
 
 
