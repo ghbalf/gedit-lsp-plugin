@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Hover feature: Ctrl+K sends `textDocument/hover` and renders the response in a popover.
+- Go-to-definition: Ctrl+. sends `textDocument/definition` and navigates to the result. Alt+Left returns to the previous cursor position via a per-window history stack.
 
 ## [0.1.0-alpha] — TBD
 

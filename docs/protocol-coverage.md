@@ -6,5 +6,5 @@
 | `textDocument/didOpen` / `didChange` (Full) / `didSave` / `didClose` | ✓ |
 | `textDocument/publishDiagnostics` | ✓ |
 | `textDocument/hover` | ✓ |
-| `textDocument/definition` | (M7) |
+| `textDocument/definition` | ✓ |
 | `textDocument/documentSymbol` | (M8) |
