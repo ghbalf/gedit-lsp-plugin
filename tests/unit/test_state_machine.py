@@ -94,6 +94,49 @@ def test_initialize_response_transitions_to_ready(
     assert server.state == ServerState.READY
 
 
+def test_initialize_handshake_pushes_settings_via_didChangeConfiguration(
+    transport: FakeTransport,
+) -> None:
+    """pylsp + pylsp-mypy ignore plugin settings in initializationOptions
+    until they receive workspace/didChangeConfiguration. The server must
+    push the same payload through both paths after initialize succeeds."""
+    init_opts = {"pylsp": {"plugins": {"pylsp_mypy": {"enabled": True}}}}
+    srv = LanguageServer(
+        language_id="python",
+        root_path="/tmp/proj",
+        command=["pylsp"],
+        initialization_options=init_opts,
+        transport_factory=lambda *a, **kw: transport,
+        backoff_schedule=[1, 2, 4],
+        max_restart_attempts=3,
+    )
+    srv.attach_buffer("file:///tmp/proj/a.py")
+    init_id = transport.outgoing[0]["id"]
+    transport.fake_response(init_id, result={"capabilities": {}})
+
+    methods = [m["method"] for m in transport.outgoing if "method" in m]
+    assert "initialized" in methods
+    assert "workspace/didChangeConfiguration" in methods
+    # didChange must come AFTER initialized.
+    assert methods.index("workspace/didChangeConfiguration") > methods.index("initialized")
+    # Same payload as initializationOptions.
+    didchange = next(
+        m for m in transport.outgoing if m.get("method") == "workspace/didChangeConfiguration"
+    )
+    assert didchange["params"] == {"settings": init_opts}
+
+
+def test_initialize_skips_didChangeConfiguration_when_no_settings(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    """No initializationOptions → don't push an empty settings notification."""
+    server.attach_buffer("file:///tmp/proj/a.py")
+    init_id = transport.outgoing[0]["id"]
+    transport.fake_response(init_id, result={"capabilities": {}})
+    methods = [m["method"] for m in transport.outgoing if "method" in m]
+    assert "workspace/didChangeConfiguration" not in methods
+
+
 def test_last_buffer_detach_transitions_to_idle(
     server: LanguageServer, transport: FakeTransport
 ) -> None:

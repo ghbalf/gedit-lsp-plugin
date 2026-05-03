@@ -212,6 +212,18 @@ class LanguageServer:
         self._transport.send(
             {"jsonrpc": "2.0", "method": "initialized", "params": {}}
         )
+        # Some servers (notably pylsp + pylsp-mypy) ignore plugin settings
+        # provided in `initializationOptions` and only consult them after a
+        # `workspace/didChangeConfiguration` notification. Push the same
+        # payload through both paths so plugin-style settings activate.
+        if self.initialization_options:
+            self._transport.send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "workspace/didChangeConfiguration",
+                    "params": {"settings": self.initialization_options},
+                }
+            )
         self._failed_starts = 0
         self.state = ServerState.READY
 

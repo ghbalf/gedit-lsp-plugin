@@ -123,7 +123,8 @@ Per-key replacement; missing keys keep their default.
 
 pyflakes flags `import nonexistent_module` as a *Warning* ("imported but
 unused") because it does not perform import resolution. Adding `pylsp-mypy`
-gives you mypy's *Error*-severity `Cannot find implementation` diagnostic.
+gives you mypy's *Error*-severity `Cannot find implementation` diagnostic
+— provided the project's mypy config doesn't suppress it.
 
 Install once: `sudo apt install python3-pylsp-mypy` (Ubuntu/Debian) or
 `pipx inject python-lsp-server pylsp-mypy` if your pylsp is in pipx.
@@ -138,8 +139,7 @@ Then enable it via `initializationOptions`:
         "plugins": {
           "pylsp_mypy": {
             "enabled": true,
-            "live_mode": true,
-            "overrides": ["--ignore-missing-imports", true]
+            "live_mode": true
           }
         }
       }
@@ -151,6 +151,13 @@ Then enable it via `initializationOptions`:
 `live_mode: true` re-runs mypy on every keystroke (debounced). Drop it to
 `false` if mypy on your project is slow — diagnostics will then only update
 on save.
+
+**Caveat — project mypy config wins:** pylsp-mypy auto-discovers a nearby
+`pyproject.toml` / `mypy.ini` / `setup.cfg` and runs mypy under it. If that
+config says `ignore_missing_imports = true`, mypy will not report unresolved
+imports as errors regardless of pylsp-mypy settings. Check
+`pyproject.toml`'s `[tool.mypy]` section if you expect import-not-found
+errors and don't see them.
 
 ### Disable diagnostics globally, keep hover and definition
 
