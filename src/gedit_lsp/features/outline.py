@@ -12,8 +12,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Tepl", "6")
-from gi.repository import Gtk
-from gi.repository import Tepl  # type: ignore[attr-defined]
+from gi.repository import Gtk, Tepl  # type: ignore[attr-defined]
 
 from gedit_lsp.utf16 import utf16_to_text_iter
 
