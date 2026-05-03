@@ -23,6 +23,7 @@ from gi.repository import Gedit, GObject  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
+from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
@@ -80,6 +81,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._registry = registry
         self._clock = GLibClock()
         self._bridges: dict[Gedit.Document, DocumentBridge] = {}
+        self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
 
         win = self.window
@@ -95,6 +97,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         for bridge in list(self._bridges.values()):
             bridge.detach()
         self._bridges.clear()
+        self._diagnostics_ctrls.clear()
 
     def do_update_state(self) -> None:
         pass
@@ -110,6 +113,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
             bridge.detach()
+        self._diagnostics_ctrls.pop(doc, None)
 
     def _attach_document(self, doc: Gedit.Document) -> None:
         if doc in self._bridges:
@@ -144,6 +148,20 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         )
         bridge.attach()
         self._bridges[doc] = bridge
+
+        ctrl = DiagnosticsController(
+            buffer=doc,
+            severity_underlines=self._config.tunable("severityUnderlineStyle"),
+        )
+        self._diagnostics_ctrls[doc] = ctrl
+
+        def _on_diag(params: dict[str, Any]) -> None:
+            if params.get("uri") != uri:
+                return
+            ctrl.apply_diagnostics(params.get("diagnostics", []))
+
+        server.add_diagnostics_listener(_on_diag)
+
         self._handlers.append(
             (doc, doc.connect("changed", lambda d: self._on_doc_changed(d)))
         )
