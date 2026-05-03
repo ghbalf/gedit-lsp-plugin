@@ -1,0 +1,9 @@
+src/gedit_lsp/plugin.py
+src/gedit_lsp/ui/statusbar.py
+src/gedit_lsp/ui/diagnostics_panel.py
+src/gedit_lsp/ui/crash_notify.py
+src/gedit_lsp/ui/prefs.py
+src/gedit_lsp/features/diagnostics.py
+src/gedit_lsp/features/hover.py
+src/gedit_lsp/features/definition.py
+src/gedit_lsp/features/outline.py
