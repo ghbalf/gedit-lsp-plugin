@@ -19,15 +19,17 @@ import gi
 gi.require_version("Gedit", "46")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "4")
-from gi.repository import Gedit, GObject  # type: ignore[attr-defined]
+from gi.repository import Gedit, Gio, GObject  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
 from gedit_lsp.features.diagnostics import DiagnosticsController
+from gedit_lsp.features.hover import HoverController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
+from gedit_lsp.server import LanguageServer
 
 
 def _config_path() -> Path:
@@ -81,8 +83,10 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._registry = registry
         self._clock = GLibClock()
         self._bridges: dict[Gedit.Document, DocumentBridge] = {}
+        self._servers: dict[Gedit.Document, LanguageServer] = {}
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
+        self._actions: list[Gio.SimpleAction] = []
 
         win = self.window
         for doc in win.get_documents():
@@ -90,13 +94,25 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._handlers.append((win, win.connect("tab-added", self._on_tab_added)))
         self._handlers.append((win, win.connect("tab-removed", self._on_tab_removed)))
 
+        hover_action = Gio.SimpleAction.new("lsp-hover", None)
+        hover_action.connect("activate", self._on_hover_activate)
+        win.add_action(hover_action)
+        self._actions.append(hover_action)
+        app = win.get_application()
+        if app is not None:
+            app.set_accels_for_action("win.lsp-hover", ["<Primary>k"])
+
     def do_deactivate(self) -> None:
+        for action in self._actions:
+            self.window.remove_action(action.get_name())
+        self._actions.clear()
         for obj, hid in self._handlers:
             obj.disconnect(hid)
         self._handlers.clear()
         for bridge in list(self._bridges.values()):
             bridge.detach()
         self._bridges.clear()
+        self._servers.clear()
         self._diagnostics_ctrls.clear()
 
     def do_update_state(self) -> None:
@@ -113,6 +129,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
             bridge.detach()
+        self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)
 
     def _attach_document(self, doc: Gedit.Document) -> None:
@@ -148,6 +165,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         )
         bridge.attach()
         self._bridges[doc] = bridge
+        self._servers[doc] = server
 
         ctrl = DiagnosticsController(
             buffer=doc,
@@ -180,3 +198,23 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         bridge = self._bridges.get(doc)
         if bridge is not None:
             bridge.on_saved()
+
+    def _on_hover_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        view = self.window.get_active_view()
+        if view is None:
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            return
+        ctrl = HoverController(
+            view=view,
+            buffer=doc,
+            server=server,
+            uri=bridge.uri,
+            spinner_threshold_ms=self._config.tunable("hoverSpinnerThresholdMs"),
+        )
+        ctrl.trigger()
