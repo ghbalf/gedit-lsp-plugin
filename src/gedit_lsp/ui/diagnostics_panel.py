@@ -19,15 +19,15 @@ class DiagnosticsPanel:
     def __init__(self, window: Gedit.Window) -> None:
         self._window = window
         # cols: severity, line, message, source, uri (hidden)
-        self._store = Gtk.ListStore(str, int, str, str, str)
+        self._store = Gtk.ListStore(str, int, str, str, str)  # type: ignore[call-arg]
         self._view = Gtk.TreeView(model=self._store)
         for i, title in enumerate(["Severity", "Line", "Message", "Source"]):
-            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
+            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)  # type: ignore[call-arg,arg-type]
             self._view.append_column(col)
         self._view.connect("row-activated", self._on_row_activated)
         scrolled = Gtk.ScrolledWindow()
-        scrolled.add(self._view)
-        scrolled.show_all()
+        scrolled.add(self._view)  # type: ignore[attr-defined]
+        scrolled.show_all()  # type: ignore[attr-defined]
         panel = window.get_bottom_panel()
         panel.add_titled(scrolled, "lsp-diagnostics", "LSP Diagnostics")
 
@@ -37,13 +37,13 @@ class DiagnosticsPanel:
         while it:
             if self._store.get_value(it, 4) == uri:
                 rows_to_remove.append(self._store.get_path(it))
-            it = self._store.iter_next(it)
+            it = self._store.iter_next(it)  # type: ignore[no-untyped-call]
         for path in reversed(rows_to_remove):
-            self._store.remove(self._store.get_iter(path))
+            self._store.remove(self._store.get_iter(path))  # type: ignore[no-untyped-call]
         for d in diagnostics:
             sev = _SEVERITY_LABEL.get(d.get("severity", 1), "Error")
             line = d["range"]["start"]["line"] + 1
-            self._store.append(
+            self._store.append(  # type: ignore[no-untyped-call]
                 [sev, line, d.get("message", ""), d.get("source", ""), uri]
             )
 
@@ -53,7 +53,7 @@ class DiagnosticsPanel:
         path: Gtk.TreePath,
         _column: Gtk.TreeViewColumn,
     ) -> None:
-        it = self._store.get_iter(path)
+        it = self._store.get_iter(path)  # type: ignore[no-untyped-call]
         line = self._store.get_value(it, 1) - 1
         uri = self._store.get_value(it, 4)
         gfile = Gio.File.new_for_uri(uri)
