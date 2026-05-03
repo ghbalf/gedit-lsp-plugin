@@ -1,0 +1,60 @@
+"""Bottom panel listing all diagnostics across all open buffers in the window."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gio, Gtk
+
+if TYPE_CHECKING:
+    from gi.repository import Gedit  # type: ignore[attr-defined]
+
+
+_SEVERITY_LABEL = {1: "Error", 2: "Warning", 3: "Info", 4: "Hint"}
+
+
+class DiagnosticsPanel:
+    def __init__(self, window: Gedit.Window) -> None:
+        self._window = window
+        # cols: severity, line, message, source, uri (hidden)
+        self._store = Gtk.ListStore(str, int, str, str, str)
+        self._view = Gtk.TreeView(model=self._store)
+        for i, title in enumerate(["Severity", "Line", "Message", "Source"]):
+            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)
+            self._view.append_column(col)
+        self._view.connect("row-activated", self._on_row_activated)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(self._view)
+        scrolled.show_all()
+        panel = window.get_bottom_panel()
+        panel.add_titled(scrolled, "lsp-diagnostics", "LSP Diagnostics")
+
+    def update_for_uri(self, uri: str, diagnostics: list[dict[str, Any]]) -> None:
+        rows_to_remove: list[Gtk.TreePath] = []
+        it = self._store.get_iter_first()
+        while it:
+            if self._store.get_value(it, 4) == uri:
+                rows_to_remove.append(self._store.get_path(it))
+            it = self._store.iter_next(it)
+        for path in reversed(rows_to_remove):
+            self._store.remove(self._store.get_iter(path))
+        for d in diagnostics:
+            sev = _SEVERITY_LABEL.get(d.get("severity", 1), "Error")
+            line = d["range"]["start"]["line"] + 1
+            self._store.append(
+                [sev, line, d.get("message", ""), d.get("source", ""), uri]
+            )
+
+    def _on_row_activated(
+        self,
+        _view: Gtk.TreeView,
+        path: Gtk.TreePath,
+        _column: Gtk.TreeViewColumn,
+    ) -> None:
+        it = self._store.get_iter(path)
+        line = self._store.get_value(it, 1) - 1
+        uri = self._store.get_value(it, 4)
+        gfile = Gio.File.new_for_uri(uri)
+        self._window.create_tab_from_location(gfile, None, line + 1, 0, False, True)

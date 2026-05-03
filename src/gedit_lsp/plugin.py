@@ -32,6 +32,7 @@ from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
 from gedit_lsp.server import LanguageServer, ServerState
+from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
 
 
@@ -109,6 +110,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._statusbar = StatusbarIndicator(win)
         if not cfg.tunable("showStatusbarIndicator"):
             self._statusbar.hide()
+        self._diag_panel = DiagnosticsPanel(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
         )
@@ -202,7 +204,9 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         def _on_diag(params: dict[str, Any]) -> None:
             if params.get("uri") != uri:
                 return
-            ctrl.apply_diagnostics(params.get("diagnostics", []))
+            diagnostics = params.get("diagnostics", [])
+            ctrl.apply_diagnostics(diagnostics)
+            self._diag_panel.update_for_uri(uri, diagnostics)
 
         server.add_diagnostics_listener(_on_diag)
 
