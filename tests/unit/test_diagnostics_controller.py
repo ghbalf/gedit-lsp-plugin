@@ -68,6 +68,35 @@ def test_severity_colors_applied_to_tag_underline_rgba() -> None:
     )
 
 
+def test_error_tag_has_higher_priority_than_warning() -> None:
+    """When an Error and a Warning diagnostic overlap, the Error's
+    underline-rgba must win visually. GTK resolves overlapping
+    non-mergeable tag properties by tag priority — later-created tags
+    have higher priority. So error must be created LAST."""
+    buf = _buffer("hello\n")
+    DiagnosticsController(
+        buffer=buf,
+        severity_underlines={
+            "error": "error", "warning": "error",
+            "info": "error", "hint": "error",
+        },
+        severity_colors={
+            "error": "#e01b24", "warning": "#e5a50a",
+            "info": "#62a0ea", "hint": "#9a9996",
+        },
+    )
+    table = buf.get_tag_table()
+    err = table.lookup("lsp-diag-error")
+    warn = table.lookup("lsp-diag-warning")
+    info = table.lookup("lsp-diag-info")
+    hint = table.lookup("lsp-diag-hint")
+    assert err is not None and warn is not None
+    assert info is not None and hint is not None
+    assert err.get_priority() > warn.get_priority()
+    assert warn.get_priority() > info.get_priority()
+    assert info.get_priority() > hint.get_priority()
+
+
 def test_zero_width_range_is_widened_for_visibility() -> None:
     """pycodestyle W292 'no newline at end of file' reports a zero-width
     range at EOF — we must widen it so a squiggle is visible.

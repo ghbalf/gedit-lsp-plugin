@@ -27,6 +27,11 @@ _UNDERLINE = {
     "single": Pango.Underline.SINGLE,
     "none": Pango.Underline.NONE,
 }
+# When two diagnostics overlap (e.g. pyflakes Error + pycodestyle Warning on
+# the same line), GTK uses tag priority to decide which underline-rgba wins.
+# Higher number = higher priority. We want the most-severe diagnostic's color
+# to be the visible one.
+_SEVERITY_PRIORITY = {"hint": 0, "info": 1, "warning": 2, "error": 3}
 
 
 class DiagnosticsController:
@@ -43,7 +48,14 @@ class DiagnosticsController:
 
     def _ensure_tags(self) -> None:
         table = self._buffer.get_tag_table()
-        for sev, style in self._severity_underlines.items():
+        # Create in priority-ascending order so error is created last and
+        # gets the highest tag-priority slot — its underline-rgba wins on
+        # ranges that have multiple severities tagged.
+        ordered = sorted(
+            self._severity_underlines.items(),
+            key=lambda kv: _SEVERITY_PRIORITY.get(kv[0], 0),
+        )
+        for sev, style in ordered:
             name = f"lsp-diag-{sev}"
             if table.lookup(name) is None:
                 self._buffer.create_tag(name)
