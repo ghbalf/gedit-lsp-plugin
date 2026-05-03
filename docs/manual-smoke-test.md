@@ -38,6 +38,11 @@ performs the action, ticks the box.
       Save As `demo.c`. Within ~1s the statusbar should show the LSP state
       indicator and right-click should expose the LSP submenu — proves the
       plugin attaches on Save-As, not only on file-open.
+- [ ] With the C buffer above showing diagnostics in the LSP Diagnostics
+      panel, **close the tab**. The C file's rows must disappear from the
+      panel. Same check on a `.py` buffer. Proves panel rows follow the
+      buffer's lifetime independent of server-specific cleanup behavior
+      (clangd doesn't send empty publishDiagnostics on close; pylsp does).
 
 ## Outline
 

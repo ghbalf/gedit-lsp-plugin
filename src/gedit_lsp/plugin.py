@@ -206,6 +206,7 @@ class GeditLspPlugin(
         doc = tab.get_document()
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
+            self._diag_panel.clear_for_uri(bridge.uri)
             bridge.detach()
         self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)

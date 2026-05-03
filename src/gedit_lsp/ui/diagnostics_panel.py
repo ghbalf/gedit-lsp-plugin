@@ -31,6 +31,10 @@ class DiagnosticsPanel:
         panel = window.get_bottom_panel()
         panel.add_titled(scrolled, "lsp-diagnostics", "LSP Diagnostics")
 
+    def clear_for_uri(self, uri: str) -> None:
+        """Drop all rows whose hidden uri column matches `uri`."""
+        self.update_for_uri(uri, [])
+
     def update_for_uri(self, uri: str, diagnostics: list[dict[str, Any]]) -> None:
         rows_to_remove: list[Gtk.TreePath] = []
         it = self._store.get_iter_first()
