@@ -1,4 +1,4 @@
-"""JSON-RPC framing for LSP.
+"""JSON-RPC framing and async transport for LSP.
 
 Frame format (mandated by the LSP spec):
 
@@ -14,10 +14,23 @@ This module exposes:
     - encode_frame(body) -> bytes
     - FrameDecoder().feed(chunk) -> list[bytes]
     - MalformedFrameError
-
-The async transport (`RpcClient`) layers on top of these in a later task.
+    - RpcClient — async JSON-RPC 2.0 client over a Gio.Subprocess
 """
 from __future__ import annotations
+
+import json
+import logging
+import time
+from collections.abc import Callable
+from typing import Any
+
+import gi
+
+gi.require_version("Gio", "2.0")
+gi.require_version("GLib", "2.0")
+from gi.repository import Gio, GLib
+
+from gedit_lsp.log import write_traffic
 
 
 class MalformedFrameError(Exception):
@@ -80,3 +93,162 @@ class FrameDecoder:
                         f"non-integer Content-Length: {value!r}"
                     ) from exc
         raise MalformedFrameError("missing Content-Length header")
+
+
+class RpcClient:
+    """Async JSON-RPC 2.0 client over a GIO subprocess.
+
+    Reads via `Gio.DataInputStream.read_line_async` for headers,
+    `Gio.InputStream.read_bytes_async` for bodies. Writes are FIFO-
+    serialized through a single `write_bytes_async` chain.
+    """
+
+    def __init__(
+        self,
+        command: list[str],
+        log_prefix: str,
+        on_request: Callable[[dict[str, Any]], None] | None = None,
+        on_notification_default: Callable[[dict[str, Any]], None] | None = None,
+        on_exit: Callable[[int], None] | None = None,
+    ) -> None:
+        self._command = command
+        self._log_prefix = log_prefix
+        self._on_request = on_request
+        self._on_notification_default = on_notification_default
+        self._on_exit = on_exit
+
+        self._proc: Gio.Subprocess | None = None
+        self._stdout: Gio.DataInputStream | None = None
+        self._stdin: Gio.OutputStream | None = None
+        self._decoder = FrameDecoder()
+        self._response_callbacks: dict[int, Callable[[dict[str, Any]], None]] = {}
+        self._notification_callbacks: dict[str, Callable[[dict[str, Any]], None]] = {}
+        self._write_queue: list[bytes] = []
+        self._writing = False
+
+    def start(self) -> None:
+        flags = (
+            Gio.SubprocessFlags.STDIN_PIPE
+            | Gio.SubprocessFlags.STDOUT_PIPE
+            | Gio.SubprocessFlags.STDERR_PIPE
+        )
+        self._proc = Gio.Subprocess.new(self._command, flags)
+        self._stdin = self._proc.get_stdin_pipe()
+        stdout_pipe = self._proc.get_stdout_pipe()
+        assert stdout_pipe is not None  # STDOUT_PIPE flag was set
+        self._stdout = Gio.DataInputStream.new(stdout_pipe)
+        self._stdout.set_newline_type(Gio.DataStreamNewlineType.CR_LF)
+        self._proc.wait_check_async(None, self._on_subprocess_exit)
+        self._read_header_line()
+
+    def kill(self) -> None:
+        if self._proc is not None:
+            self._proc.force_exit()
+
+    def send(self, msg: dict[str, Any]) -> None:
+        body = json.dumps(msg, ensure_ascii=False).encode("utf-8")
+        write_traffic(">>>", self._log_prefix, time.monotonic() * 1000.0, body)
+        framed = encode_frame(body)
+        self._write_queue.append(framed)
+        self._pump_writes()
+
+    def on_response(
+        self, request_id: int, callback: Callable[[dict[str, Any]], None]
+    ) -> None:
+        self._response_callbacks[request_id] = callback
+
+    def on_notification(
+        self, method: str, callback: Callable[[dict[str, Any]], None]
+    ) -> None:
+        self._notification_callbacks[method] = callback
+
+    # --- internals ---
+
+    def _pump_writes(self) -> None:
+        if self._writing or not self._write_queue or self._stdin is None:
+            return
+        self._writing = True
+        chunk = self._write_queue.pop(0)
+        self._stdin.write_bytes_async(
+            GLib.Bytes.new(chunk), GLib.PRIORITY_DEFAULT, None, self._on_write_done
+        )
+
+    def _on_write_done(self, source: Any, res: Any) -> None:
+        try:
+            source.write_bytes_finish(res)
+        except GLib.Error as exc:
+            logging.getLogger("gedit_lsp").warning("write failed: %s", exc.message)
+        self._writing = False
+        self._pump_writes()
+
+    def _read_header_line(self) -> None:
+        assert self._stdout is not None
+        self._stdout.read_line_async(
+            GLib.PRIORITY_DEFAULT, None, self._on_header_line
+        )
+
+    def _on_header_line(self, source: Any, res: Any) -> None:
+        try:
+            line, _length = source.read_line_finish_utf8(res)
+        except GLib.Error:
+            return
+        if line is None:
+            return
+        chunk = (line + "\r\n").encode("ascii")
+        msgs = self._decoder.feed(chunk)
+        if msgs:
+            for body in msgs:
+                self._dispatch(body)
+        # Read body if header block completed
+        if self._decoder._expected_length is not None:  # noqa: SLF001
+            remaining = self._decoder._expected_length - len(self._decoder._buffer)  # noqa: SLF001
+            self._read_body(remaining)
+        else:
+            self._read_header_line()
+
+    def _read_body(self, remaining: int) -> None:
+        assert self._stdout is not None
+        self._stdout.read_bytes_async(
+            remaining, GLib.PRIORITY_DEFAULT, None, self._on_body
+        )
+
+    def _on_body(self, source: Any, res: Any) -> None:
+        try:
+            chunk = source.read_bytes_finish(res).get_data() or b""
+        except GLib.Error:
+            return
+        msgs = self._decoder.feed(chunk)
+        for body in msgs:
+            self._dispatch(body)
+        self._read_header_line()
+
+    def _dispatch(self, body: bytes) -> None:
+        write_traffic("<<<", self._log_prefix, time.monotonic() * 1000.0, body)
+        try:
+            msg = json.loads(body)
+        except json.JSONDecodeError:
+            logging.getLogger("gedit_lsp").warning("malformed JSON from server")
+            return
+        if "id" in msg and "method" not in msg:
+            cb = self._response_callbacks.pop(msg["id"], None)
+            if cb is not None:
+                cb(msg)
+        elif "method" in msg and "id" not in msg:
+            cb_n = self._notification_callbacks.get(msg["method"])
+            if cb_n is not None:
+                cb_n(msg)
+            elif self._on_notification_default is not None:
+                self._on_notification_default(msg)
+        elif "method" in msg and "id" in msg:
+            if self._on_request is not None:
+                self._on_request(msg)
+
+    def _on_subprocess_exit(self, source: Any, res: Any) -> None:
+        code = 0
+        try:
+            if self._proc is not None:
+                self._proc.wait_check_finish(res)
+        except GLib.Error as exc:
+            code = exc.code or 1
+        if self._on_exit is not None:
+            self._on_exit(code)
