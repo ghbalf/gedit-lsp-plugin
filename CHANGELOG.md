@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (entries appear here as features land)
+- Hover feature: Ctrl+K sends `textDocument/hover` and renders the response in a popover.
 
 ## [0.1.0-alpha] — TBD
 
