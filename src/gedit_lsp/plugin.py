@@ -19,7 +19,15 @@ import gi
 gi.require_version("Gedit", "46")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "4")
-from gi.repository import Gedit, Gio, GLib, GObject  # type: ignore[attr-defined]
+gi.require_version("PeasGtk", "1.0")
+from gi.repository import (  # type: ignore[attr-defined]
+    Gedit,
+    Gio,
+    GLib,
+    GObject,
+    Gtk,
+    PeasGtk,
+)
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
@@ -77,10 +85,18 @@ def _ensure_globals() -> tuple[Config, ServerRegistry]:
     return _config, _registry
 
 
-class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[misc]
+class GeditLspPlugin(
+    GObject.Object,
+    Gedit.WindowActivatable,  # type: ignore[misc]
+    PeasGtk.Configurable,  # type: ignore[misc]
+):
     __gtype_name__ = "GeditLspPlugin"
 
     window = GObject.Property(type=Gedit.Window)
+
+    def do_create_configure_widget(self) -> Gtk.Widget:
+        from gedit_lsp.ui.prefs import build_preferences_widget
+        return build_preferences_widget(_config_path())
 
     def do_activate(self) -> None:
         cfg, registry = _ensure_globals()
