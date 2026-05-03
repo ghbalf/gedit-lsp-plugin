@@ -23,6 +23,7 @@ from gi.repository import Gedit, Gio, GObject  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
+from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.log import setup_logging
@@ -94,13 +95,23 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._handlers.append((win, win.connect("tab-added", self._on_tab_added)))
         self._handlers.append((win, win.connect("tab-removed", self._on_tab_removed)))
 
-        hover_action = Gio.SimpleAction.new("lsp-hover", None)
-        hover_action.connect("activate", self._on_hover_activate)
-        win.add_action(hover_action)
-        self._actions.append(hover_action)
+        self._history = CursorHistory(
+            max_entries=cfg.tunable("gotoHistoryMaxEntries")
+        )
+        self._definition_ctrl = DefinitionController(window=win, history=self._history)
+
         app = win.get_application()
-        if app is not None:
-            app.set_accels_for_action("win.lsp-hover", ["<Primary>k"])
+        for name, accel, handler in [
+            ("lsp-hover", "<Primary>k", self._on_hover_activate),
+            ("lsp-goto-definition", "<Primary>period", self._on_definition_activate),
+            ("lsp-go-back", "<Alt>Left", self._on_go_back_activate),
+        ]:
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", handler)
+            win.add_action(action)
+            self._actions.append(action)
+            if app is not None:
+                app.set_accels_for_action(f"win.{name}", [accel])
 
     def do_deactivate(self) -> None:
         for action in self._actions:
@@ -218,3 +229,21 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
             spinner_threshold_ms=self._config.tunable("hoverSpinnerThresholdMs"),
         )
         ctrl.trigger()
+
+    def _on_definition_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        view = self.window.get_active_view()
+        if view is None:
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            return
+        self._definition_ctrl.trigger(server, bridge.uri)
+
+    def _on_go_back_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        self._definition_ctrl.go_back()
