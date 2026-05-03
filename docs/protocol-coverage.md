@@ -7,4 +7,4 @@
 | `textDocument/publishDiagnostics` | ✓ |
 | `textDocument/hover` | ✓ |
 | `textDocument/definition` | ✓ |
-| `textDocument/documentSymbol` | (M8) |
+| `textDocument/documentSymbol` | ✓ |
