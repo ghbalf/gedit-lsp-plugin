@@ -32,6 +32,7 @@ from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
 from gedit_lsp.server import LanguageServer, ServerState
+from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
 
@@ -111,6 +112,7 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         if not cfg.tunable("showStatusbarIndicator"):
             self._statusbar.hide()
         self._diag_panel = DiagnosticsPanel(win)
+        self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
         )
@@ -193,6 +195,17 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self._bridges[doc] = bridge
         self._servers[doc] = server
         server.add_state_listener(lambda _s: self._refresh_statusbar())
+
+        captured_server = server
+        captured_bridge = bridge
+        captured_doc = doc
+
+        def _state_listener(new_state: ServerState) -> None:
+            self._on_server_state(
+                captured_server, captured_bridge, captured_doc, new_state
+            )
+
+        server.add_state_listener(_state_listener)
         self._refresh_statusbar()
 
         ctrl = DiagnosticsController(
@@ -280,6 +293,44 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
         self._definition_ctrl.go_back()
+
+    def _on_server_state(
+        self,
+        server: LanguageServer,
+        bridge: DocumentBridge,
+        doc: Gedit.Document,
+        new_state: ServerState,
+    ) -> None:
+        if new_state != ServerState.CIRCUIT_OPEN:
+            return
+        gfile = doc.get_file().get_location()
+        if gfile is None:
+            return
+        tab = self.window.get_tab_from_location(gfile)
+        if tab is None:
+            return
+        max_attempts = self._config.tunable("restartMaxAttempts")
+        msg = (
+            f"LSP for {server.language_id} ({server.root_path}) "
+            f"failed {max_attempts} times."
+        )
+
+        def _on_restart() -> None:
+            server.reset_circuit_breaker()
+            server.attach_buffer(bridge.uri)
+
+        self._crash_notifier.show_for_tab(
+            tab,
+            msg,
+            on_restart=_on_restart,
+            on_open_log=self._open_log,
+            on_disable=lambda: None,
+        )
+
+    def _open_log(self) -> None:
+        log_path = Path.home() / ".local/state/gedit-lsp/plugin.log"
+        gfile = Gio.File.new_for_path(str(log_path))
+        self.window.create_tab_from_location(gfile, None, 1, 0, False, True)
 
     def _refresh_statusbar(self) -> None:
         view = self.window.get_active_view()
