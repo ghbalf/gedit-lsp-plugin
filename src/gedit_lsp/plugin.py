@@ -19,13 +19,14 @@ import gi
 gi.require_version("Gedit", "46")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "4")
-from gi.repository import Gedit, Gio, GObject  # type: ignore[attr-defined]
+from gi.repository import Gedit, Gio, GLib, GObject  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.hover import HoverController
+from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
@@ -99,6 +100,11 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
             max_entries=cfg.tunable("gotoHistoryMaxEntries")
         )
         self._definition_ctrl = DefinitionController(window=win, history=self._history)
+        self._outline_ctrl = OutlineController(
+            window=win,
+            refresh_debounce_ms=cfg.tunable("outlineRefreshDebounceMs"),
+            initial_delay_ms=cfg.tunable("outlineInitialDelayMs"),
+        )
 
         app = win.get_application()
         for name, accel, handler in [
@@ -190,6 +196,20 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
             ctrl.apply_diagnostics(params.get("diagnostics", []))
 
         server.add_diagnostics_listener(_on_diag)
+
+        def _request_outline() -> bool:
+            def _on_outline(msg: dict[str, Any]) -> None:
+                items = msg.get("result") or []
+                self._outline_ctrl.populate(items)
+
+            server._send_request(
+                "textDocument/documentSymbol",
+                {"textDocument": {"uri": uri}},
+                _on_outline,
+            )
+            return False  # one-shot
+
+        GLib.timeout_add(self._config.tunable("outlineInitialDelayMs"), _request_outline)
 
         self._handlers.append(
             (doc, doc.connect("changed", lambda d: self._on_doc_changed(d)))
