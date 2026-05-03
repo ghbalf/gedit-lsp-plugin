@@ -91,3 +91,25 @@ class DocumentBridge:
         if self._pending_handle is not None:
             self._clock.cancel(self._pending_handle)
             self._flush_change()
+
+
+class GLibClock:
+    """Real Clock backed by GLib.timeout_add."""
+
+    def __init__(self) -> None:
+        import gi  # local import to keep test imports light
+
+        gi.require_version("GLib", "2.0")
+        from gi.repository import GLib
+
+        self._GLib = GLib
+
+    def schedule_after_ms(self, delay_ms: int, callback: Any) -> int:
+        def _wrapper() -> bool:
+            callback()
+            return False
+
+        return int(self._GLib.timeout_add(delay_ms, _wrapper))
+
+    def cancel(self, handle: int) -> None:
+        self._GLib.source_remove(handle)
