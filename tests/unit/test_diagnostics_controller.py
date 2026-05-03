@@ -68,6 +68,61 @@ def test_severity_colors_applied_to_tag_underline_rgba() -> None:
     )
 
 
+def test_zero_width_range_is_widened_for_visibility() -> None:
+    """pycodestyle W292 'no newline at end of file' reports a zero-width
+    range at EOF — we must widen it so a squiggle is visible.
+    """
+    buf = _buffer("hello\nworld\n")
+    ctrl = DiagnosticsController(buffer=buf, severity_underlines={"warning": "error"})
+    ctrl.apply_diagnostics(
+        [
+            {
+                "range": {
+                    "start": {"line": 0, "character": 2},
+                    "end":   {"line": 0, "character": 2},
+                },
+                "severity": 2,
+                "message": "fake-W292",
+            }
+        ]
+    )
+    tag = buf.get_tag_table().lookup("lsp-diag-warning")
+    assert tag is not None
+    it = buf.get_start_iter()
+    assert it.forward_to_tag_toggle(tag), "no tagged range present — widening failed"
+    end_it = it.copy()
+    end_it.forward_to_tag_toggle(tag)
+    # Range must span at least one character.
+    assert end_it.get_offset() - it.get_offset() >= 1
+
+
+def test_zero_width_range_at_eof_widens_backward() -> None:
+    """If the zero-width range is at the very end of the buffer, forward
+    nudge fails — must fall back to widening backward."""
+    buf = _buffer("ab")
+    end_offset = buf.get_end_iter().get_offset()
+    ctrl = DiagnosticsController(buffer=buf, severity_underlines={"warning": "error"})
+    ctrl.apply_diagnostics(
+        [
+            {
+                "range": {
+                    "start": {"line": 0, "character": end_offset},
+                    "end":   {"line": 0, "character": end_offset},
+                },
+                "severity": 2,
+                "message": "at-eof",
+            }
+        ]
+    )
+    tag = buf.get_tag_table().lookup("lsp-diag-warning")
+    assert tag is not None
+    it = buf.get_start_iter()
+    assert it.forward_to_tag_toggle(tag)
+    end_it = it.copy()
+    end_it.forward_to_tag_toggle(tag)
+    assert end_it.get_offset() - it.get_offset() >= 1
+
+
 def test_severity_colors_omitted_leaves_underline_rgba_unset() -> None:
     """When no colors are supplied, tags should not flip underline-rgba-set."""
     buf = _buffer("hello\n")

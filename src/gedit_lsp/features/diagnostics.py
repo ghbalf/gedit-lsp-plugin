@@ -67,7 +67,28 @@ class DiagnosticsController:
             r = d["range"]
             start = utf16_to_text_iter(self._buffer, r["start"]["line"], r["start"]["character"])
             end = utf16_to_text_iter(self._buffer, r["end"]["line"], r["end"]["character"])
+            start, end = self._widen_for_visibility(start, end)
             self._buffer.apply_tag(tag, start, end)
+
+    def _widen_for_visibility(
+        self, start: Gtk.TextIter, end: Gtk.TextIter,
+    ) -> tuple[Gtk.TextIter, Gtk.TextIter]:
+        """Ensure the tagged range covers at least one character.
+
+        LSP servers sometimes report zero-width ranges (e.g. pycodestyle
+        W292 'no newline at end of file' anchors at EOF). Without
+        widening, those produce no visible underline. We try forward
+        first, fall back to backward.
+        """
+        if not start.equal(end):
+            return start, end
+        nudged = end.copy()
+        if nudged.forward_char():
+            return start, nudged
+        nudged = start.copy()
+        if nudged.backward_char():
+            return nudged, end
+        return start, end
 
     def _clear_all_tags(self) -> None:
         table = self._buffer.get_tag_table()
