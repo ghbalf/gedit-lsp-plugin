@@ -183,6 +183,14 @@ class LanguageServer:
         self._failed_starts += 1
         self.state = ServerState.NOT_RUNNING
 
+    def kill_now(self) -> None:
+        """Immediate shutdown — used on plugin deactivate / window close."""
+        if self.state in (ServerState.READY, ServerState.IDLE):
+            self._begin_shutdown()
+        elif self._transport is not None:
+            self._transport.kill()
+            self.state = ServerState.NOT_RUNNING
+
     def _begin_shutdown(self) -> None:
         self._cancel_idle_timer()
         self.state = ServerState.STOPPING
