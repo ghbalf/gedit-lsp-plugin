@@ -1,6 +1,6 @@
 PLUGIN_NAME := gedit_lsp
 PLUGIN_DIR  := $(HOME)/.local/share/gedit/plugins
-VERSION     := $(shell python -c "import tomllib; print(tomllib.loads(open('pyproject.toml').read())['project']['version'])")
+VERSION     := $(shell python3 -c "import tomllib; print(tomllib.loads(open('pyproject.toml').read())['project']['version'])")
 
 .PHONY: help install uninstall test test-integration lint typecheck pot mo dist clean
 
