@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gtksource-4 python3-pylsp gettext
+
+      - name: Install dev deps
+        run: pip install -e ".[dev]"
+
+      - name: Run full test suite
+        run: |
+          ruff check src tests
+          mypy src
+          pytest tests/unit
+          pytest tests/integration
+
+      - name: Generate .pot template
+        run: make pot
+
+      - name: Build distribution tarball
+        run: make dist
+
+      - name: Extract changelog section for this version
+        env:
+          GH_REF: ${{ github.ref }}
+        run: |
+          tag="${GH_REF#refs/tags/}"
+          version="${tag#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { capture=1; print; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "Notes:"; cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          body_path: release-notes.md
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
