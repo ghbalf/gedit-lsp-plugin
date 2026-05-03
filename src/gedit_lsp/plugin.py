@@ -10,6 +10,7 @@ Lifecycle:
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from fnmatch import fnmatch
@@ -154,7 +155,7 @@ class GeditLspPlugin(
             self._actions.append(action)
             accels = self._config.keybindings_for(config_key)
             if app is not None:
-                app.set_accels_for_action(f"win.{name}", accels)
+                app.set_accels_for_action(f"win.{name}", accels)  # type: ignore[union-attr]
                 logger.info("registered action win.%s accels=%s", name, accels)
             else:
                 logger.warning("no application; accels %s for win.%s NOT bound", accels, name)
@@ -164,10 +165,8 @@ class GeditLspPlugin(
             self.window.remove_action(action.get_name())
         self._actions.clear()
         for view, hid in list(self._popup_handlers.items()):
-            try:
+            with contextlib.suppress(TypeError, RuntimeError):
                 view.disconnect(hid)
-            except (TypeError, RuntimeError):
-                pass
         self._popup_handlers.clear()
         for obj, hid in self._handlers:
             obj.disconnect(hid)
@@ -199,10 +198,8 @@ class GeditLspPlugin(
         view = tab.get_view()
         hid = self._popup_handlers.pop(view, None)
         if hid is not None:
-            try:
+            with contextlib.suppress(TypeError, RuntimeError):
                 view.disconnect(hid)
-            except (TypeError, RuntimeError):
-                pass
         doc = tab.get_document()
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
