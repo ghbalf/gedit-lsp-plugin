@@ -11,6 +11,7 @@ Lifecycle:
 from __future__ import annotations
 
 import os
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -189,6 +190,23 @@ class GeditLspPlugin(
         lang_id = lang.get_id()
         if self._config.server_for(lang_id) is None:
             return
+
+        # File-size cap
+        size_limit = self._config.tunable("maxFileSizeBytes")
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        if size > size_limit:
+            self._statusbar.set_state("LSP: skipped (large file)")
+            return
+
+        # Ignore-list (glob match against absolute path)
+        path_abs = str(path.resolve())
+        for pattern in self._config.tunable("disabledForPaths"):
+            if fnmatch(path_abs, pattern):
+                self._statusbar.set_state("LSP: skipped (path excluded)")
+                return
         markers = self._config.root_markers_for(lang_id)
         resolver = ProjectRootResolver(markers=markers)
         root = resolver.resolve(path)
