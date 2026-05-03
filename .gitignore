@@ -13,6 +13,7 @@ htmlcov/
 .coverage.*
 build/
 dist/
+.venv/
 
 # Compiled gettext catalogs
 *.mo

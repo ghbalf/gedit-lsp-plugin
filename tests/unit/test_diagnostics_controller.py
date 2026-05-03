@@ -46,6 +46,40 @@ def test_clears_then_applies_tags() -> None:
     assert not start.starts_tag(tag) and not start.has_tag(tag)
 
 
+def test_severity_colors_applied_to_tag_underline_rgba() -> None:
+    """severity_colors should set underline-rgba on each created tag."""
+    buf = _buffer("hello\n")
+    DiagnosticsController(
+        buffer=buf,
+        severity_underlines={"error": "error", "warning": "error"},
+        severity_colors={"error": "#e01b24", "warning": "#e5a50a"},
+    )
+    table = buf.get_tag_table()
+    err = table.lookup("lsp-diag-error")
+    warn = table.lookup("lsp-diag-warning")
+    assert err is not None and warn is not None
+    assert err.get_property("underline-rgba-set") is True
+    assert warn.get_property("underline-rgba-set") is True
+    err_rgba = err.get_property("underline-rgba")
+    warn_rgba = warn.get_property("underline-rgba")
+    # Two distinct severities must get distinct colors.
+    assert (err_rgba.red, err_rgba.green, err_rgba.blue) != (
+        warn_rgba.red, warn_rgba.green, warn_rgba.blue,
+    )
+
+
+def test_severity_colors_omitted_leaves_underline_rgba_unset() -> None:
+    """When no colors are supplied, tags should not flip underline-rgba-set."""
+    buf = _buffer("hello\n")
+    DiagnosticsController(
+        buffer=buf,
+        severity_underlines={"error": "error"},
+    )
+    tag = buf.get_tag_table().lookup("lsp-diag-error")
+    assert tag is not None
+    assert tag.get_property("underline-rgba-set") is False
+
+
 def test_applies_correct_range_for_emoji() -> None:
     buf = _buffer("a🐍def")
     ctrl = DiagnosticsController(buffer=buf, severity_underlines={"warning": "error"})

@@ -23,6 +23,7 @@ EXPECTED: dict[str, str] = {
     "Gedit": "3.0",
     "GtkSource": "300",
     "Gtk": "3.0",
+    "Gdk": "3.0",
     "Peas": "1.0",
     "PeasGtk": "1.0",
     "Tepl": "6",

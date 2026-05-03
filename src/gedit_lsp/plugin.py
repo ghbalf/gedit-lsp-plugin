@@ -285,6 +285,7 @@ class GeditLspPlugin(
         ctrl = DiagnosticsController(
             buffer=doc,
             severity_underlines=self._config.tunable("severityUnderlineStyle"),
+            severity_colors=self._config.tunable("severityUnderlineColor"),
         )
         self._diagnostics_ctrls[doc] = ctrl
 

@@ -13,10 +13,11 @@ from typing import Any
 
 import gi
 
+gi.require_version("Gdk", "3.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
 gi.require_version("Pango", "1.0")
-from gi.repository import Gtk, GtkSource, Pango
+from gi.repository import Gdk, Gtk, GtkSource, Pango
 
 from gedit_lsp.utf16 import utf16_to_text_iter
 
@@ -33,9 +34,11 @@ class DiagnosticsController:
         self,
         buffer: GtkSource.Buffer,
         severity_underlines: dict[str, str],
+        severity_colors: dict[str, str] | None = None,
     ) -> None:
         self._buffer = buffer
         self._severity_underlines = severity_underlines
+        self._severity_colors = severity_colors or {}
         self._ensure_tags()
 
     def _ensure_tags(self) -> None:
@@ -47,6 +50,12 @@ class DiagnosticsController:
                 tag: Gtk.TextTag | None = table.lookup(name)
                 if tag is not None:
                     tag.set_property("underline", _UNDERLINE.get(style, Pango.Underline.ERROR))
+                    color = self._severity_colors.get(sev)
+                    if color:
+                        rgba = Gdk.RGBA()
+                        if rgba.parse(color):
+                            tag.set_property("underline-rgba-set", True)
+                            tag.set_property("underline-rgba", rgba)
 
     def apply_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         self._clear_all_tags()

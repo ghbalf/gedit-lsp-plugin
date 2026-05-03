@@ -61,8 +61,14 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "severityUnderlineStyle": {
         "error":   "error",
         "warning": "error",
-        "info":    "single",
-        "hint":    "single",
+        "info":    "error",
+        "hint":    "error",
+    },
+    "severityUnderlineColor": {
+        "error":   "#e01b24",
+        "warning": "#e5a50a",
+        "info":    "#62a0ea",
+        "hint":    "#9a9996",
     },
     "disabledForPaths": [
         "**/.venv/**",

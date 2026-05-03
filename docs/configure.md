@@ -104,7 +104,8 @@ Per-key replacement; missing keys keep their default.
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
 | `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline"]` | Which features run |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
-| `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error`, `single`, `none` |
+| `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |
+| `severityUnderlineColor` | obj | (see defaults) | Per-severity squiggle color (CSS hex). Overrides the theme's red default for `Pango.Underline.ERROR`. Set a value to `""` to fall back to the theme color. |
 | `disabledForPaths` | str[] | (see defaults) | Glob patterns; matching buffers are skipped |
 | `serverCapabilityOverrides` | obj | `{}` | Deep-merged on top of server's `initialize` response capabilities |
 
