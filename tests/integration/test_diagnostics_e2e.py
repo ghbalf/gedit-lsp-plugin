@@ -55,10 +55,14 @@ def test_diagnostics_listener_receives_notifications(
     def on_exit(code: int) -> None:
         exit_codes.append(code)
 
-    def transport_factory() -> RpcClient:
+    def transport_factory(
+        command: list[str],
+        log_prefix: str,
+        on_subprocess_exit: Any,
+    ) -> RpcClient:
         return RpcClient(
-            command=["pylsp"],
-            log_prefix="[python:e2e]",
+            command=command,
+            log_prefix=log_prefix,
             on_exit=on_exit,
         )
 

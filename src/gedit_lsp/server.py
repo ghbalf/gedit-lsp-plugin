@@ -10,6 +10,7 @@ from __future__ import annotations
 import enum
 import itertools
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol
 
 import gi
@@ -138,7 +139,10 @@ class LanguageServer:
 
     def _spawn_and_initialize(self) -> None:
         self.state = ServerState.STARTING
-        self._transport = self._transport_factory()
+        log_prefix = f"[{self.language_id}:{Path(self.root_path).name}]"
+        self._transport = self._transport_factory(
+            self.command, log_prefix, self._handle_subprocess_exit
+        )
         self._transport.start()
         req_id = next(self._req_ids)
         self._transport.on_response(req_id, self._on_initialize_response)
@@ -180,6 +184,11 @@ class LanguageServer:
             cb(params)
 
     def _handle_failed_start(self) -> None:
+        self._failed_starts += 1
+        self.state = ServerState.NOT_RUNNING
+
+    def _handle_subprocess_exit(self, exit_code: int) -> None:
+        """Production callback wired into RpcClient.on_exit."""
         self._failed_starts += 1
         self.state = ServerState.NOT_RUNNING
 
