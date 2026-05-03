@@ -71,13 +71,27 @@ class LanguageServer:
         self._max_restart_attempts = max_restart_attempts
         self._idle_timeout_seconds = idle_timeout_seconds
 
-        self.state: ServerState = ServerState.NOT_RUNNING
+        self._state: ServerState = ServerState.NOT_RUNNING
         self._transport: Transport | None = None
         self._attached_uris: set[str] = set()
         self._req_ids = itertools.count(1)
         self._failed_starts = 0
         self._idle_source_id: int | None = None
         self._diagnostics_listeners: list[Callable[[dict[str, Any]], None]] = []
+        self._state_listeners: list[Callable[[ServerState], None]] = []
+
+    @property
+    def state(self) -> ServerState:
+        return self._state
+
+    @state.setter
+    def state(self, value: ServerState) -> None:
+        self._state = value
+        for cb in self._state_listeners:
+            cb(value)
+
+    def add_state_listener(self, callback: Callable[[ServerState], None]) -> None:
+        self._state_listeners.append(callback)
 
     @property
     def next_restart_delay(self) -> int:

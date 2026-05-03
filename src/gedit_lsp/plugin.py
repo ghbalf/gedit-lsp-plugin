@@ -31,7 +31,8 @@ from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
-from gedit_lsp.server import LanguageServer
+from gedit_lsp.server import LanguageServer, ServerState
+from gedit_lsp.ui.statusbar import StatusbarIndicator
 
 
 def _config_path() -> Path:
@@ -104,6 +105,12 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
             window=win,
             refresh_debounce_ms=cfg.tunable("outlineRefreshDebounceMs"),
             initial_delay_ms=cfg.tunable("outlineInitialDelayMs"),
+        )
+        self._statusbar = StatusbarIndicator(win)
+        if not cfg.tunable("showStatusbarIndicator"):
+            self._statusbar.hide()
+        self._handlers.append(
+            (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
         )
 
         app = win.get_application()
@@ -183,6 +190,8 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         bridge.attach()
         self._bridges[doc] = bridge
         self._servers[doc] = server
+        server.add_state_listener(lambda _s: self._refresh_statusbar())
+        self._refresh_statusbar()
 
         ctrl = DiagnosticsController(
             buffer=doc,
@@ -267,3 +276,25 @@ class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[m
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
         self._definition_ctrl.go_back()
+
+    def _refresh_statusbar(self) -> None:
+        view = self.window.get_active_view()
+        if view is None:
+            self._statusbar.set_state("")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            self._statusbar.set_state("")
+            return
+        cmd = server.command[0] if server.command else "?"
+        states = {
+            ServerState.NOT_RUNNING:  f"LSP: {cmd} ⏵",
+            ServerState.STARTING:     f"LSP: {cmd} …",
+            ServerState.READY:        f"LSP: {cmd} ⚡",
+            ServerState.IDLE:         f"LSP: {cmd} ⚡",
+            ServerState.STOPPING:     f"LSP: {cmd} ⏹",
+            ServerState.CIRCUIT_OPEN: f"LSP: {cmd} ✗ disabled",
+        }
+        self._statusbar.set_state(states.get(server.state, ""))
