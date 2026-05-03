@@ -23,7 +23,7 @@ preferences dialog.
 
 ### Goals
 
-- Diagnostics, hover (Ctrl+K), go-to-definition (Ctrl+.) with cursor history,
+- Diagnostics, hover (Ctrl+K), go-to-definition (F12) with cursor history,
   and a document-outline side panel — usable for daily work.
 - Multi-language, multi-project support: one server process per
   `(language, project root)` pair, shared across buffers and gedit windows.
@@ -345,8 +345,12 @@ Mouse-hover trigger is out of scope for v1; deferred to v0.2.
 
 ### 6.3 Go to Definition
 
-App action `win.lsp-goto-definition` bound to **Ctrl+.** (period). On
+App action `win.lsp-goto-definition` bound to **F12**. On
 invoke: send `textDocument/definition`, expect 0/1/N `Location`s.
+
+(Originally specified as Ctrl+. but rebound to F12: GtkTextView's default
+binding set hard-binds `<Primary>period` to `insert-emoji`, which intercepts
+the keystroke before the window's accel map can dispatch our action.)
 
 - **0** → status-bar message *"No definition found"*.
 - **1** → if same file, move cursor; if different file,
@@ -357,7 +361,14 @@ invoke: send `textDocument/definition`, expect 0/1/N `Location`s.
 
 **Cursor history.** Per-window stack (max `gotoHistoryMaxEntries` = 50)
 of `(file, line, column)` tuples pushed on every Go-to-Definition. App
-action `win.lsp-go-back` bound to **Alt+Left** pops it.
+action `win.lsp-go-back` bound to **Shift+F12** pops it.
+
+(Originally specified as Alt+Left but rebound: GtkSourceView binds
+`<Alt>Left` to a word-move action that edits the buffer, consuming the
+keystroke before our window-level accel can dispatch.)
+
+All three keyboard bindings (hover, goto-definition, go-back) are
+configurable via the `keybindings` section of the user JSON config.
 
 ### 6.4 Outline (Document Symbols)
 
@@ -695,7 +706,7 @@ cutting an alpha release.
 - Open Python file → squiggle on syntax error within 2 s.
 - Save → squiggle updates.
 - Ctrl+K on a known symbol → popover shows.
-- Ctrl+. on a function call → jumps to definition. Alt+Left returns.
+- F12 on a function call → jumps to definition. Shift+F12 returns.
 - Toggle plugin off → all squiggles, marks, panels disappear; gedit
   doesn't crash.
 - Open second window with same file → both windows route to the same

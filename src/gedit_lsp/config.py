@@ -21,7 +21,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from gedit_lsp.defaults import BUILTIN_SERVERS, DEFAULT_ROOT_MARKERS, DEFAULT_TUNABLES
+from gedit_lsp.defaults import (
+    BUILTIN_SERVERS,
+    DEFAULT_KEYBINDINGS,
+    DEFAULT_ROOT_MARKERS,
+    DEFAULT_TUNABLES,
+)
 
 
 class ConfigError(Exception):
@@ -35,6 +40,7 @@ class Config:
         self._root_markers: dict[str, list[str]] = {}
         self._initialization_options: dict[str, Any] = {}
         self._tunables: dict[str, Any] = {}
+        self._keybindings: dict[str, list[str]] = {}
         self._observers: list[Callable[[], None]] = []
 
     def add_observer(self, callback: Callable[[], None]) -> None:
@@ -45,6 +51,7 @@ class Config:
         self._root_markers = {}
         self._initialization_options = {}
         self._tunables = copy.deepcopy(DEFAULT_TUNABLES)
+        self._keybindings = copy.deepcopy(DEFAULT_KEYBINDINGS)
 
         if not self._user_path.exists():
             return
@@ -68,6 +75,14 @@ class Config:
         for k, v in (user.get("tunables") or {}).items():
             self._tunables[k] = v
 
+        for action, accels in (user.get("keybindings") or {}).items():
+            if isinstance(accels, str):
+                self._keybindings[action] = [accels] if accels else []
+            elif isinstance(accels, list):
+                self._keybindings[action] = [a for a in accels if a]
+            elif accels is None:
+                self._keybindings[action] = []
+
         for cb in self._observers:
             cb()
 
@@ -82,3 +97,6 @@ class Config:
 
     def tunable(self, key: str) -> Any:
         return self._tunables[key]
+
+    def keybindings_for(self, action: str) -> list[str]:
+        return list(self._keybindings.get(action, []))

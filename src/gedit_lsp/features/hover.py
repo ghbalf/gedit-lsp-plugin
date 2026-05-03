@@ -5,9 +5,12 @@ for v1. Code-block fences are kept as-is in the body.
 """
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, cast
 
 import gi
+
+logger = logging.getLogger("gedit_lsp.hover")
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
@@ -59,13 +62,20 @@ class HoverController:
     def trigger(self) -> None:
         cursor = self._buffer.get_iter_at_mark(self._buffer.get_insert())
         line, char = text_iter_to_utf16(cursor)
+        logger.info("trigger: uri=%s pos=%d:%d", self._uri, line, char)
 
         def on_response(msg: dict[str, Any]) -> None:
-            if msg.get("error") or msg.get("result") is None:
+            if msg.get("error"):
+                logger.info("hover response: error=%r", msg.get("error"))
+                return
+            if msg.get("result") is None:
+                logger.info("hover response: result is None")
                 return
             text = render_hover_contents(msg["result"].get("contents"))
             if not text.strip():
+                logger.info("hover response: empty contents (raw=%r)", msg["result"].get("contents"))
                 return
+            logger.info("hover response: rendering popover (%d chars)", len(text))
             self._show_popover(cursor, text)
 
         self._server._send_request(

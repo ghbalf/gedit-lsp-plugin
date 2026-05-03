@@ -9,6 +9,7 @@ from typing import Any
 
 BUILTIN_SERVERS: dict[str, dict[str, Any]] = {
     "python":     {"command": ["pylsp"]},
+    "python3":    {"command": ["pylsp"]},
     "c":          {"command": ["clangd", "--background-index"]},
     "cpp":        {"command": ["clangd", "--background-index"]},
     "rust":       {"command": ["rust-analyzer"]},
@@ -27,6 +28,12 @@ DEFAULT_ROOT_MARKERS: list[str] = [
     "compile_commands.json", "CMakeLists.txt",
     "Makefile",
 ]
+
+DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
+    "hover":           ["<Primary>k"],
+    "goto-definition": ["F12"],
+    "go-back":         ["<Shift>F12"],
+}
 
 DEFAULT_TUNABLES: dict[str, Any] = {
     "serverIdleTimeoutSeconds": 300,

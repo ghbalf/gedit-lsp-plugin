@@ -124,6 +124,47 @@ def test_reload_picks_up_changes(tmp_path: Path) -> None:
     assert cfg.server_for("python")["command"] == ["b"]
 
 
+def test_keybindings_default(tmp_path: Path) -> None:
+    cfg = Config(user_path=tmp_path / "missing.json")
+    cfg.load()
+    assert cfg.keybindings_for("hover") == ["<Primary>k"]
+    assert cfg.keybindings_for("goto-definition") == ["F12"]
+    assert cfg.keybindings_for("go-back") == ["<Shift>F12"]
+
+
+def test_keybindings_user_override_string(tmp_path: Path) -> None:
+    user = tmp_path / "lsp-plugin.json"
+    write_json(user, {"keybindings": {"hover": "<Primary>i"}})
+    cfg = Config(user_path=user)
+    cfg.load()
+    assert cfg.keybindings_for("hover") == ["<Primary>i"]
+    # Other actions keep defaults
+    assert cfg.keybindings_for("goto-definition") == ["F12"]
+
+
+def test_keybindings_user_override_list(tmp_path: Path) -> None:
+    user = tmp_path / "lsp-plugin.json"
+    write_json(user, {"keybindings": {"goto-definition": ["F12", "<Primary>F12"]}})
+    cfg = Config(user_path=user)
+    cfg.load()
+    assert cfg.keybindings_for("goto-definition") == ["F12", "<Primary>F12"]
+
+
+def test_keybindings_empty_disables(tmp_path: Path) -> None:
+    user = tmp_path / "lsp-plugin.json"
+    write_json(user, {"keybindings": {"hover": "", "go-back": []}})
+    cfg = Config(user_path=user)
+    cfg.load()
+    assert cfg.keybindings_for("hover") == []
+    assert cfg.keybindings_for("go-back") == []
+
+
+def test_keybindings_unknown_action_returns_empty(tmp_path: Path) -> None:
+    cfg = Config(user_path=tmp_path / "missing.json")
+    cfg.load()
+    assert cfg.keybindings_for("nope") == []
+
+
 def test_observer_called_on_reload(tmp_path: Path) -> None:
     user = tmp_path / "lsp-plugin.json"
     write_json(user, {})

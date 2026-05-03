@@ -29,9 +29,11 @@ performs the action, ticks the box.
 ## Definition
 
 - [ ] Open `tests/fixtures/projects/python_definition/main.py`. Cursor
-      on the call to `helper(42)` in `main`. Press **Ctrl+.** → cursor
+      on the call to `helper(42)` in `main`. Press **F12** → cursor
       jumps to the `def helper(x):` line.
-- [ ] Press **Alt+Left** → cursor returns to the `helper(42)` call.
+- [ ] Press **Shift+F12** → cursor returns to the `helper(42)` call.
+- [ ] Right-click in the buffer → an **LSP** submenu lists the same three
+      actions; clicking each invokes it.
 
 ## Outline
 

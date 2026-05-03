@@ -15,6 +15,7 @@ Missing keys fall through to built-in defaults.
   "servers": {            "<lang-id>": { "command": ["..."] } },
   "rootMarkers": {        "<lang-id>": ["...", "..."] },
   "initializationOptions": { "<lang-id>": { } },
+  "keybindings": {        "<action>": "<accel>" | ["<accel>", ...] },
   "tunables": { /* see below */ }
 }
 ```
@@ -54,6 +55,31 @@ Forwarded verbatim to the server's `initialize` request.
     "python": { "pylsp": { "plugins": { "pycodestyle": { "enabled": false } } } }
   } }
 ```
+
+## `keybindings` — keyboard shortcuts
+
+Map an action name to one accelerator string (e.g. `"F12"`, `"<Primary>k"`,
+`"<Shift>F12"`) or a list of strings if you want multiple bindings to invoke
+the same action. An empty string or empty list disables the action's keyboard
+binding without removing the action itself (the right-click LSP submenu still
+works).
+
+| Action | Default | Meaning |
+|---|---|---|
+| `hover` | `<Primary>k` | Show the hover popover at the cursor |
+| `goto-definition` | `F12` | Jump to the definition of the symbol at the cursor |
+| `go-back` | `<Shift>F12` | Return to the previous cursor position |
+
+```json
+{ "keybindings": { "hover": "<Primary>i", "goto-definition": ["F12", "<Primary>F12"] } }
+```
+
+Accelerator syntax is GTK's: `<Primary>` (Ctrl), `<Shift>`, `<Alt>`, function
+keys like `F12`, character keys like `k`, `bracketleft`, `period`. Avoid
+combinations that GtkSourceView's default binding set already claims —
+notably `<Primary>period` (emoji chooser), `<Alt>Left`/`<Alt>Right` (move
+word), `<Alt>Up`/`<Alt>Down` (move line). Those keystrokes are consumed by
+the view before the window's accel map sees them.
 
 ## `tunables` — runtime knobs
 

@@ -10,10 +10,13 @@ Lifecycle:
 """
 from __future__ import annotations
 
+import logging
 import os
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("gedit_lsp.plugin")
 
 import gi
 
@@ -41,6 +44,7 @@ from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
 from gedit_lsp.server import LanguageServer, ServerState
+from gedit_lsp.ui import popup_menu
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
@@ -109,10 +113,14 @@ class GeditLspPlugin(
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
+        self._popup_handlers: dict[Any, int] = {}
 
         win = self.window
+        logger.info("plugin activated for window=%s", win)
         for doc in win.get_documents():
             self._attach_document(doc)
+        for view in win.get_views():
+            self._attach_popup_menu(view)
         self._handlers.append((win, win.connect("tab-added", self._on_tab_added)))
         self._handlers.append((win, win.connect("tab-removed", self._on_tab_removed)))
 
@@ -134,23 +142,33 @@ class GeditLspPlugin(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
         )
 
-        app = win.get_application()
-        for name, accel, handler in [
-            ("lsp-hover", "<Primary>k", self._on_hover_activate),
-            ("lsp-goto-definition", "<Primary>period", self._on_definition_activate),
-            ("lsp-go-back", "<Alt>Left", self._on_go_back_activate),
+        app = win.get_application() or Gio.Application.get_default()
+        for name, config_key, handler in [
+            ("lsp-hover", "hover", self._on_hover_activate),
+            ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
+            ("lsp-go-back", "go-back", self._on_go_back_activate),
         ]:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             win.add_action(action)
             self._actions.append(action)
+            accels = self._config.keybindings_for(config_key)
             if app is not None:
-                app.set_accels_for_action(f"win.{name}", [accel])
+                app.set_accels_for_action(f"win.{name}", accels)
+                logger.info("registered action win.%s accels=%s", name, accels)
+            else:
+                logger.warning("no application; accels %s for win.%s NOT bound", accels, name)
 
     def do_deactivate(self) -> None:
         for action in self._actions:
             self.window.remove_action(action.get_name())
         self._actions.clear()
+        for view, hid in list(self._popup_handlers.items()):
+            try:
+                view.disconnect(hid)
+            except (TypeError, RuntimeError):
+                pass
+        self._popup_handlers.clear()
         for obj, hid in self._handlers:
             obj.disconnect(hid)
         self._handlers.clear()
@@ -165,11 +183,19 @@ class GeditLspPlugin(
 
     def _on_tab_added(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
         doc = tab.get_document()
+        self._attach_popup_menu(tab.get_view())
         # Document may not be loaded yet; defer to `loaded` signal
         loaded_handler = doc.connect("loaded", lambda d: self._attach_document(d))
         self._handlers.append((doc, loaded_handler))
 
     def _on_tab_removed(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
+        view = tab.get_view()
+        hid = self._popup_handlers.pop(view, None)
+        if hid is not None:
+            try:
+                view.disconnect(hid)
+            except (TypeError, RuntimeError):
+                pass
         doc = tab.get_document()
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
@@ -177,18 +203,26 @@ class GeditLspPlugin(
         self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)
 
+    def _attach_popup_menu(self, view: Any) -> None:
+        if view is None or view in self._popup_handlers:
+            return
+        self._popup_handlers[view] = popup_menu.attach(view, self)
+
     def _attach_document(self, doc: Gedit.Document) -> None:
         if doc in self._bridges:
             return
         gfile = doc.get_file().get_location()
         if gfile is None:
-            return  # untitled buffer
+            logger.info("skip attach: untitled buffer")
+            return
         path = Path(gfile.get_path())
         lang = doc.get_language()
         if lang is None:
+            logger.info("skip attach: no language for %s", path)
             return
         lang_id = lang.get_id()
         if self._config.server_for(lang_id) is None:
+            logger.info("skip attach: no server config for lang_id=%r (%s)", lang_id, path)
             return
 
         # File-size cap
@@ -228,6 +262,7 @@ class GeditLspPlugin(
         bridge.attach()
         self._bridges[doc] = bridge
         self._servers[doc] = server
+        logger.info("attached %s lang=%s root=%s", path, lang_id, root)
         server.add_state_listener(lambda _s: self._refresh_statusbar())
 
         captured_server = server
@@ -293,14 +328,21 @@ class GeditLspPlugin(
     def _on_hover_activate(
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
+        logger.info("hover action invoked")
         view = self.window.get_active_view()
         if view is None:
+            logger.info("hover: no active view")
             return
         doc = view.get_buffer()
         bridge = self._bridges.get(doc)
         server = self._servers.get(doc)
         if bridge is None or server is None:
+            logger.info(
+                "hover: doc not bridged (bridge=%s server=%s); attached docs=%d",
+                bridge, server, len(self._bridges),
+            )
             return
+        logger.info("hover: sending request, server.state=%s", server.state)
         ctrl = HoverController(
             view=view,
             buffer=doc,
@@ -313,19 +355,26 @@ class GeditLspPlugin(
     def _on_definition_activate(
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
+        logger.info("definition action invoked")
         view = self.window.get_active_view()
         if view is None:
+            logger.info("definition: no active view")
             return
         doc = view.get_buffer()
         bridge = self._bridges.get(doc)
         server = self._servers.get(doc)
         if bridge is None or server is None:
+            logger.info(
+                "definition: doc not bridged (bridge=%s server=%s)", bridge, server
+            )
             return
+        logger.info("definition: triggering, server.state=%s", server.state)
         self._definition_ctrl.trigger(server, bridge.uri)
 
     def _on_go_back_activate(
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
+        logger.info("go-back action invoked")
         self._definition_ctrl.go_back()
 
     def _on_server_state(
