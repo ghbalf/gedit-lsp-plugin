@@ -12,6 +12,13 @@ import itertools
 from collections.abc import Callable
 from typing import Any, Protocol
 
+import gi
+
+gi.require_version("GLib", "2.0")
+from gi.repository import GLib
+
+from gedit_lsp.rpc import RpcClient
+
 
 class ServerState(enum.Enum):
     NOT_RUNNING = "not_running"
@@ -34,6 +41,14 @@ class Transport(Protocol):
     ) -> None: ...
 
 
+def real_transport_factory(
+    command: list[str],
+    log_prefix: str,
+    on_exit: Callable[[int], None],
+) -> RpcClient:
+    return RpcClient(command=command, log_prefix=log_prefix, on_exit=on_exit)
+
+
 class LanguageServer:
     def __init__(
         self,
@@ -44,6 +59,7 @@ class LanguageServer:
         transport_factory: Callable[..., Transport],
         backoff_schedule: list[int],
         max_restart_attempts: int,
+        idle_timeout_seconds: int = 300,
     ) -> None:
         self.language_id = language_id
         self.root_path = root_path
@@ -52,12 +68,14 @@ class LanguageServer:
         self._transport_factory = transport_factory
         self._backoff_schedule = backoff_schedule
         self._max_restart_attempts = max_restart_attempts
+        self._idle_timeout_seconds = idle_timeout_seconds
 
         self.state: ServerState = ServerState.NOT_RUNNING
         self._transport: Transport | None = None
         self._attached_uris: set[str] = set()
         self._req_ids = itertools.count(1)
         self._failed_starts = 0
+        self._idle_source_id: int | None = None
 
     @property
     def next_restart_delay(self) -> int:
@@ -76,14 +94,27 @@ class LanguageServer:
                 return
             self._spawn_and_initialize()
         elif self.state == ServerState.IDLE:
+            self._cancel_idle_timer()
             self.state = ServerState.READY
-            # (real impl cancels idle timer here)
 
     def detach_buffer(self, uri: str) -> None:
         self._attached_uris.discard(uri)
         if not self._attached_uris and self.state == ServerState.READY:
             self.state = ServerState.IDLE
-            # (real impl starts idle timer here)
+            self._idle_source_id = GLib.timeout_add_seconds(
+                self._idle_timeout_seconds, self._on_idle_timer
+            )
+
+    def _on_idle_timer(self) -> bool:
+        if self.state == ServerState.IDLE:
+            self._begin_shutdown()
+        self._idle_source_id = None
+        return False  # don't repeat
+
+    def _cancel_idle_timer(self) -> None:
+        if self._idle_source_id is not None:
+            GLib.source_remove(self._idle_source_id)
+            self._idle_source_id = None
 
     def reset_circuit_breaker(self) -> None:
         self._failed_starts = 0
@@ -153,6 +184,7 @@ class LanguageServer:
         self.state = ServerState.NOT_RUNNING
 
     def _begin_shutdown(self) -> None:
+        self._cancel_idle_timer()
         self.state = ServerState.STOPPING
         assert self._transport is not None
         req_id = next(self._req_ids)
