@@ -135,6 +135,29 @@ class LanguageServer:
             {"jsonrpc": "2.0", "method": method, "params": params}
         )
 
+    def _send_request(
+        self,
+        method: str,
+        params: Any,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> int:
+        """Send a request, register the callback, return the request id."""
+        if self._transport is None:
+            return -1
+        req_id = next(self._req_ids)
+        self._transport.on_response(req_id, callback)
+        self._transport.send(
+            {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+        )
+        return req_id
+
+    def cancel_request(self, request_id: int) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": request_id}}
+        )
+
     # --- internal ---
 
     def _spawn_and_initialize(self) -> None:
