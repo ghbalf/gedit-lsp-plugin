@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+from collections.abc import Callable
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
@@ -112,6 +113,7 @@ class GeditLspPlugin(
         self._bridges: dict[Gedit.Document, DocumentBridge] = {}
         self._servers: dict[Gedit.Document, LanguageServer] = {}
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
+        self._listener_disposers: dict[Gedit.Document, list[Callable[[], None]]] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -176,6 +178,10 @@ class GeditLspPlugin(
         self._bridges.clear()
         self._servers.clear()
         self._diagnostics_ctrls.clear()
+        for disposers in self._listener_disposers.values():
+            for dispose in disposers:
+                dispose()
+        self._listener_disposers.clear()
 
     def do_update_state(self) -> None:
         pass
@@ -207,6 +213,8 @@ class GeditLspPlugin(
             bridge.detach()
         self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)
+        for dispose in self._listener_disposers.pop(doc, []):
+            dispose()
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:
@@ -268,7 +276,10 @@ class GeditLspPlugin(
         self._bridges[doc] = bridge
         self._servers[doc] = server
         logger.info("attached %s lang=%s root=%s", path, lang_id, root)
-        server.add_state_listener(lambda _s: self._refresh_statusbar())
+        disposers: list[Callable[[], None]] = []
+        disposers.append(
+            server.add_state_listener(lambda _s: self._refresh_statusbar())
+        )
 
         captured_server = server
         captured_bridge = bridge
@@ -279,7 +290,7 @@ class GeditLspPlugin(
                 captured_server, captured_bridge, captured_doc, new_state
             )
 
-        server.add_state_listener(_state_listener)
+        disposers.append(server.add_state_listener(_state_listener))
         self._refresh_statusbar()
 
         ctrl = DiagnosticsController(
@@ -296,7 +307,8 @@ class GeditLspPlugin(
             ctrl.apply_diagnostics(diagnostics)
             self._diag_panel.update_for_uri(uri, diagnostics)
 
-        server.add_diagnostics_listener(_on_diag)
+        disposers.append(server.add_diagnostics_listener(_on_diag))
+        self._listener_disposers[doc] = disposers
 
         def _request_outline() -> bool:
             def _on_outline(msg: dict[str, Any]) -> None:

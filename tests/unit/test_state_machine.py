@@ -213,3 +213,49 @@ def test_reset_circuit_breaker_allows_restart(
     server.reset_circuit_breaker()
     server.attach_buffer("file:///tmp/proj/a.py")
     assert server.state == ServerState.STARTING
+
+
+def test_diagnostics_listener_disposer_removes_callback(
+    server: LanguageServer,
+) -> None:
+    received: list[dict[str, Any]] = []
+    dispose = server.add_diagnostics_listener(received.append)
+    server._on_diagnostics({"params": {"uri": "file:///x", "diagnostics": []}})
+    assert len(received) == 1
+    dispose()
+    server._on_diagnostics({"params": {"uri": "file:///x", "diagnostics": []}})
+    assert len(received) == 1, "listener fired after dispose"
+
+
+def test_state_listener_disposer_removes_callback(
+    server: LanguageServer,
+) -> None:
+    received: list[ServerState] = []
+    dispose = server.add_state_listener(received.append)
+    server.state = ServerState.STARTING
+    assert received == [ServerState.STARTING]
+    dispose()
+    server.state = ServerState.READY
+    assert received == [ServerState.STARTING], "listener fired after dispose"
+
+
+def test_listener_disposer_is_idempotent(server: LanguageServer) -> None:
+    """Calling the disposer twice (e.g. once on tab-removed, then again on
+    do_deactivate) must not raise."""
+    dispose = server.add_diagnostics_listener(lambda _p: None)
+    dispose()
+    dispose()  # second call is a no-op
+
+
+def test_disposing_one_listener_leaves_others_intact(
+    server: LanguageServer,
+) -> None:
+    """Two listeners; disposing the first must not affect the second."""
+    a: list[dict[str, Any]] = []
+    b: list[dict[str, Any]] = []
+    dispose_a = server.add_diagnostics_listener(a.append)
+    server.add_diagnostics_listener(b.append)
+    dispose_a()
+    server._on_diagnostics({"params": {"uri": "file:///x", "diagnostics": []}})
+    assert a == []
+    assert len(b) == 1

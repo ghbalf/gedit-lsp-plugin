@@ -7,6 +7,7 @@ fake.
 """
 from __future__ import annotations
 
+import contextlib
 import enum
 import itertools
 from collections.abc import Callable
@@ -90,8 +91,18 @@ class LanguageServer:
         for cb in self._state_listeners:
             cb(value)
 
-    def add_state_listener(self, callback: Callable[[ServerState], None]) -> None:
+    def add_state_listener(
+        self, callback: Callable[[ServerState], None]
+    ) -> Callable[[], None]:
+        """Register a state listener. Returns a disposer; call it to remove
+        the listener. Calling the disposer more than once is a no-op."""
         self._state_listeners.append(callback)
+
+        def _dispose() -> None:
+            with contextlib.suppress(ValueError):
+                self._state_listeners.remove(callback)
+
+        return _dispose
 
     @property
     def next_restart_delay(self) -> int:
@@ -139,8 +150,19 @@ class LanguageServer:
 
     def add_diagnostics_listener(
         self, callback: Callable[[dict[str, Any]], None]
-    ) -> None:
+    ) -> Callable[[], None]:
+        """Register a diagnostics listener. Returns a disposer; call it to
+        remove the listener. Calling the disposer more than once is a
+        no-op. Important for closures that capture per-document state
+        (TextBuffer, panel rows) — without disposal they leak past tab
+        close and may fire for a buffer that's already gone."""
         self._diagnostics_listeners.append(callback)
+
+        def _dispose() -> None:
+            with contextlib.suppress(ValueError):
+                self._diagnostics_listeners.remove(callback)
+
+        return _dispose
 
     def send_notification(self, method: str, params: Any) -> None:
         if self._transport is None:
