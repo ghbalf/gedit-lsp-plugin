@@ -1,0 +1,164 @@
+"""GeditLspPlugin — libpeas entry point, Gedit.WindowActivatable.
+
+Lifecycle:
+    do_activate()    — wire signals on Gedit.Window, attach DocumentBridges
+                       to currently-open documents, set up logging.
+    do_deactivate()  — disconnect signals, detach all bridges, shut down
+                       all servers via the registry.
+    do_update_state() — reserved (used for menu-action sensitivity in
+                       feature milestones).
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+import gi
+
+gi.require_version("Gedit", "46")
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkSource", "4")
+from gi.repository import Gedit, GObject  # type: ignore[attr-defined]
+
+from gedit_lsp.bridge import DocumentBridge, GLibClock
+from gedit_lsp.config import Config
+from gedit_lsp.log import setup_logging
+from gedit_lsp.registry import ServerRegistry
+from gedit_lsp.root import ProjectRootResolver
+from gedit_lsp.rpc import RpcClient
+
+
+def _config_path() -> Path:
+    base = Path(
+        os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
+    )
+    return base / "gedit" / "lsp-plugin.json"
+
+
+def _state_dir() -> Path:
+    base = Path(
+        os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")
+    )
+    return base / "gedit-lsp"
+
+
+# Module-global singletons (one per gedit process)
+_config: Config | None = None
+_registry: ServerRegistry | None = None
+
+
+def _ensure_globals() -> tuple[Config, ServerRegistry]:
+    global _config, _registry
+    if _config is None:
+        _config = Config(user_path=_config_path())
+        _config.load()
+        setup_logging(
+            state_dir=_state_dir(),
+            level=_config.tunable("logLevel"),
+            traffic_enabled=_config.tunable("logLspTraffic"),
+            max_bytes=_config.tunable("logRotationMaxBytes"),
+            keep=_config.tunable("logRotationKeepFiles"),
+        )
+
+        def factory(command: list[str], log_prefix: str, on_exit: Any) -> RpcClient:
+            return RpcClient(command=command, log_prefix=log_prefix, on_exit=on_exit)
+
+        _registry = ServerRegistry(config=_config, transport_factory=factory)
+    assert _config is not None and _registry is not None
+    return _config, _registry
+
+
+class GeditLspPlugin(GObject.Object, Gedit.WindowActivatable):  # type: ignore[misc]
+    __gtype_name__ = "GeditLspPlugin"
+
+    window = GObject.Property(type=Gedit.Window)
+
+    def do_activate(self) -> None:
+        cfg, registry = _ensure_globals()
+        self._config = cfg
+        self._registry = registry
+        self._clock = GLibClock()
+        self._bridges: dict[Gedit.Document, DocumentBridge] = {}
+        self._handlers: list[tuple[GObject.Object, int]] = []
+
+        win = self.window
+        for doc in win.get_documents():
+            self._attach_document(doc)
+        self._handlers.append((win, win.connect("tab-added", self._on_tab_added)))
+        self._handlers.append((win, win.connect("tab-removed", self._on_tab_removed)))
+
+    def do_deactivate(self) -> None:
+        for obj, hid in self._handlers:
+            obj.disconnect(hid)
+        self._handlers.clear()
+        for bridge in list(self._bridges.values()):
+            bridge.detach()
+        self._bridges.clear()
+
+    def do_update_state(self) -> None:
+        pass
+
+    def _on_tab_added(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
+        doc = tab.get_document()
+        # Document may not be loaded yet; defer to `loaded` signal
+        loaded_handler = doc.connect("loaded", lambda d: self._attach_document(d))
+        self._handlers.append((doc, loaded_handler))
+
+    def _on_tab_removed(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
+        doc = tab.get_document()
+        bridge = self._bridges.pop(doc, None)
+        if bridge is not None:
+            bridge.detach()
+
+    def _attach_document(self, doc: Gedit.Document) -> None:
+        if doc in self._bridges:
+            return
+        gfile = doc.get_file().get_location()
+        if gfile is None:
+            return  # untitled buffer
+        path = Path(gfile.get_path())
+        lang = doc.get_language()
+        if lang is None:
+            return
+        lang_id = lang.get_id()
+        if self._config.server_for(lang_id) is None:
+            return
+        markers = self._config.root_markers_for(lang_id)
+        resolver = ProjectRootResolver(markers=markers)
+        root = resolver.resolve(path)
+        server = self._registry.get_or_spawn(lang_id, root)
+        if server is None:
+            return
+        # Trigger a buffer attach so server transitions to STARTING/READY
+        uri = gfile.get_uri()
+        server.attach_buffer(uri)
+        text = doc.get_text(doc.get_start_iter(), doc.get_end_iter(), False)
+        bridge = DocumentBridge(
+            uri=uri,
+            language_id=lang_id,
+            text=text,
+            server=server,
+            clock=self._clock,
+            debounce_ms=self._config.tunable("changeDebounceMs"),
+        )
+        bridge.attach()
+        self._bridges[doc] = bridge
+        self._handlers.append(
+            (doc, doc.connect("changed", lambda d: self._on_doc_changed(d)))
+        )
+        self._handlers.append(
+            (doc, doc.connect("saved", lambda d: self._on_doc_saved(d)))
+        )
+
+    def _on_doc_changed(self, doc: Gedit.Document) -> None:
+        bridge = self._bridges.get(doc)
+        if bridge is None:
+            return
+        text = doc.get_text(doc.get_start_iter(), doc.get_end_iter(), False)
+        bridge.on_changed(text)
+
+    def _on_doc_saved(self, doc: Gedit.Document) -> None:
+        bridge = self._bridges.get(doc)
+        if bridge is not None:
+            bridge.on_saved()
