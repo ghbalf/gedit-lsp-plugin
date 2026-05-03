@@ -150,15 +150,22 @@ class DiagnosticsController:
     def _widen_for_visibility(
         self, start: Gtk.TextIter, end: Gtk.TextIter,
     ) -> tuple[Gtk.TextIter, Gtk.TextIter]:
-        """Ensure the tagged range covers at least one character.
+        """Ensure the tagged range covers at least one visible character.
 
         LSP servers sometimes report zero-width ranges (e.g. pycodestyle
-        W292 'no newline at end of file' anchors at EOF). Without
-        widening, those produce no visible underline. We try forward
-        first, fall back to backward.
+        W292 at EOF) or ranges past the line's actual length (pyflakes
+        'invalid syntax' often returns end.character > line length).
+        After clamping, those collapse to zero-width at end-of-line.
+        Widening forward would put the tag on the trailing `\\n`, which
+        Pango can't render — invisible squiggle. So at end-of-line we
+        widen backward to cover the last visible character.
         """
         if not start.equal(end):
             return start, end
+        if start.ends_line() and not start.starts_line():
+            nudged = start.copy()
+            if nudged.backward_char():
+                return nudged, end
         nudged = end.copy()
         if nudged.forward_char():
             return start, nudged

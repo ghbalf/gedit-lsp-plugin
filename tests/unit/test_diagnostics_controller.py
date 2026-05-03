@@ -232,6 +232,38 @@ def test_zero_width_range_at_eof_widens_backward() -> None:
     assert end_it.get_offset() - it.get_offset() >= 1
 
 
+def test_past_eol_range_widens_backward_not_onto_newline() -> None:
+    """pyflakes reports `invalid syntax` with end past the line's UTF-16
+    length (e.g. L3:9 → L3:19 on a 9-char line). After clamping that
+    becomes zero-width at end-of-line. Widening forward would land the
+    tag on the trailing `\\n`, which Pango can't render — invisible
+    squiggle. Must widen backward so the tag covers the last visible
+    character of the line."""
+    buf = _buffer("def err(:\n    pass\n")
+    ctrl = DiagnosticsController(buffer=buf, severity_underlines={"error": "error"})
+    ctrl.apply_diagnostics(
+        [
+            {
+                "range": {
+                    "start": {"line": 0, "character": 9},
+                    "end":   {"line": 0, "character": 19},
+                },
+                "severity": 1,
+                "message": "invalid syntax",
+            }
+        ]
+    )
+    tag = buf.get_tag_table().lookup("lsp-diag-error")
+    assert tag is not None
+    it = buf.get_start_iter()
+    assert it.forward_to_tag_toggle(tag), "no tag applied"
+    end_it = it.copy()
+    end_it.forward_to_tag_toggle(tag)
+    tagged = buf.get_text(it, end_it, False)
+    assert "\n" not in tagged, f"squiggle landed on newline: {tagged!r}"
+    assert end_it.get_offset() - it.get_offset() >= 1
+
+
 def test_severity_colors_omitted_leaves_underline_rgba_unset() -> None:
     """When no colors are supplied, tags should not flip underline-rgba-set."""
     buf = _buffer("hello\n")
