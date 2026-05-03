@@ -34,6 +34,10 @@ performs the action, ticks the box.
 - [ ] Press **Shift+F12** → cursor returns to the `helper(42)` call.
 - [ ] Right-click in the buffer → an **LSP** submenu lists the same three
       actions; clicking each invokes it.
+- [ ] Open a new untitled buffer (Ctrl+N), type `int main(){return 0;}`,
+      Save As `demo.c`. Within ~1s the statusbar should show the LSP state
+      indicator and right-click should expose the LSP submenu — proves the
+      plugin attaches on Save-As, not only on file-open.
 
 ## Outline
 

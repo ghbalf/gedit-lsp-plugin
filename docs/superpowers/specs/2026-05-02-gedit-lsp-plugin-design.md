@@ -121,6 +121,16 @@ Python objects and GObject signals — no shared mutable state outside the
 gedit window. The `ServerRegistry` is a process-global singleton — buffers
 opened in any window route to the same server pool.
 
+A document is bridged to a server the first time **all three preconditions
+hold**: the buffer has a file path, the buffer has a language, and a
+`servers[<lang-id>]` entry exists. The triggers that re-check these are
+the document's `loaded` signal (file-open path), `saved` signal (Save-As
+on a previously-untitled buffer, or any save that turns into the first
+save), and `notify::language` (gedit infers/changes the language after the
+path is set, or the user picks a syntax via View → Highlight Mode). The
+attach function is idempotent on `doc → bridge` — multiple triggers fire
+one bridge.
+
 ### 3.2 Why GObject signals (not Python callbacks)
 
 `WindowActivatable` plugins can be deactivated mid-session (user toggles the

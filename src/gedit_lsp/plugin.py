@@ -184,9 +184,16 @@ class GeditLspPlugin(
     def _on_tab_added(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
         doc = tab.get_document()
         self._attach_popup_menu(tab.get_view())
-        # Document may not be loaded yet; defer to `loaded` signal
-        loaded_handler = doc.connect("loaded", lambda d: self._attach_document(d))
-        self._handlers.append((doc, loaded_handler))
+        # Document may not be loaded yet; defer to `loaded` for file-open path,
+        # `saved` for the Save-As path (new buffer → file appears), and
+        # `notify::language` for the case where gedit infers/changes language
+        # after the path is already set. _attach_document is idempotent.
+        for sig, cb in (
+            ("loaded",           lambda d: self._attach_document(d)),
+            ("saved",            lambda d: self._attach_document(d)),
+            ("notify::language", lambda d, _p: self._attach_document(d)),
+        ):
+            self._handlers.append((doc, doc.connect(sig, cb)))
 
     def _on_tab_removed(self, _win: Gedit.Window, tab: Gedit.Tab) -> None:
         view = tab.get_view()
