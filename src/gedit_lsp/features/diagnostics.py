@@ -34,6 +34,55 @@ _UNDERLINE = {
 _SEVERITY_PRIORITY = {"hint": 0, "info": 1, "warning": 2, "error": 3}
 
 
+def _subtract_intervals(
+    s: int, e: int, occupied: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """Return the sub-intervals of [s, e) not covered by `occupied`.
+
+    `occupied` must be sorted, disjoint, half-open intervals.
+    """
+    result: list[tuple[int, int]] = []
+    cur = s
+    for os, oe in occupied:
+        if oe <= cur:
+            continue
+        if os >= e:
+            break
+        if cur < os:
+            result.append((cur, os))
+        cur = max(cur, oe)
+        if cur >= e:
+            return result
+    if cur < e:
+        result.append((cur, e))
+    return result
+
+
+def _union_intervals(
+    intervals: list[tuple[int, int]], s: int, e: int,
+) -> list[tuple[int, int]]:
+    """Insert [s, e) into the sorted, disjoint `intervals`, merging overlaps.
+
+    Returns the resulting sorted, disjoint interval list.
+    """
+    out: list[tuple[int, int]] = []
+    placed = False
+    for os, oe in intervals:
+        if oe < s:
+            out.append((os, oe))
+        elif e < os:
+            if not placed:
+                out.append((s, e))
+                placed = True
+            out.append((os, oe))
+        else:
+            s = min(s, os)
+            e = max(e, oe)
+    if not placed:
+        out.append((s, e))
+    return out
+
+
 class DiagnosticsController:
     def __init__(
         self,
@@ -71,16 +120,32 @@ class DiagnosticsController:
 
     def apply_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         self._clear_all_tags()
-        for d in diagnostics:
+        # Sort by severity ASC (Error=1 first). Apply each diagnostic only
+        # to the sub-ranges not already claimed by a higher-severity
+        # diagnostic. This guarantees any char is covered by exactly one
+        # lsp-diag-* tag, so the visible color matches the most-severe
+        # finding regardless of how GTK/Pango resolve overlapping
+        # underline-rgba in the AttrList.
+        by_severity = sorted(diagnostics, key=lambda d: d.get("severity", 1))
+        occupied: list[tuple[int, int]] = []
+        for d in by_severity:
             sev = _SEVERITY_TO_KEY.get(d.get("severity", 1), "error")
             tag = self._buffer.get_tag_table().lookup(f"lsp-diag-{sev}")
             if tag is None:
                 continue
             r = d["range"]
-            start = utf16_to_text_iter(self._buffer, r["start"]["line"], r["start"]["character"])
-            end = utf16_to_text_iter(self._buffer, r["end"]["line"], r["end"]["character"])
-            start, end = self._widen_for_visibility(start, end)
-            self._buffer.apply_tag(tag, start, end)
+            s_iter = utf16_to_text_iter(self._buffer, r["start"]["line"], r["start"]["character"])
+            e_iter = utf16_to_text_iter(self._buffer, r["end"]["line"], r["end"]["character"])
+            s_iter, e_iter = self._widen_for_visibility(s_iter, e_iter)
+            s = s_iter.get_offset()
+            e = e_iter.get_offset()
+            if e <= s:
+                continue
+            for fs, fe in _subtract_intervals(s, e, occupied):
+                si = self._buffer.get_iter_at_offset(fs)
+                ei = self._buffer.get_iter_at_offset(fe)
+                self._buffer.apply_tag(tag, si, ei)
+            occupied = _union_intervals(occupied, s, e)
 
     def _widen_for_visibility(
         self, start: Gtk.TextIter, end: Gtk.TextIter,

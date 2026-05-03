@@ -68,6 +68,86 @@ def test_severity_colors_applied_to_tag_underline_rgba() -> None:
     )
 
 
+def test_subtract_intervals() -> None:
+    from gedit_lsp.features.diagnostics import _subtract_intervals
+    # No occupied → full range.
+    assert _subtract_intervals(0, 10, []) == [(0, 10)]
+    # Fully covered → empty.
+    assert _subtract_intervals(2, 5, [(0, 10)]) == []
+    # Hole in the middle.
+    assert _subtract_intervals(0, 10, [(3, 5)]) == [(0, 3), (5, 10)]
+    # Multiple holes.
+    assert _subtract_intervals(0, 10, [(2, 3), (6, 7)]) == [(0, 2), (3, 6), (7, 10)]
+    # Occupied beyond range — ignored.
+    assert _subtract_intervals(0, 5, [(7, 9)]) == [(0, 5)]
+    # Boundary: occupied ends exactly at start.
+    assert _subtract_intervals(5, 10, [(0, 5)]) == [(5, 10)]
+
+
+def test_union_intervals() -> None:
+    from gedit_lsp.features.diagnostics import _union_intervals
+    assert _union_intervals([], 0, 5) == [(0, 5)]
+    assert _union_intervals([(0, 5)], 5, 10) == [(0, 10)]
+    assert _union_intervals([(0, 3)], 5, 10) == [(0, 3), (5, 10)]
+    assert _union_intervals([(5, 10)], 0, 3) == [(0, 3), (5, 10)]
+    assert _union_intervals([(0, 5)], 2, 8) == [(0, 8)]
+    assert _union_intervals([(0, 3), (7, 10)], 2, 8) == [(0, 10)]
+
+
+def test_overlapping_error_and_warning_only_error_tagged() -> None:
+    """If pyflakes Error covers cols 0-9 and pycodestyle Warning covers
+    cols 0-4 on the same line, the chars 0-4 must be tagged with ONLY
+    the error tag (not also the warning tag). This makes the visible
+    color independent of GTK/Pango overlap-resolution rules."""
+    buf = _buffer("def err(:\n    pass\n")
+    ctrl = DiagnosticsController(
+        buffer=buf,
+        severity_underlines={"error": "error", "warning": "error"},
+    )
+    ctrl.apply_diagnostics([
+        {"range": {"start": {"line": 0, "character": 0},
+                   "end":   {"line": 0, "character": 4}},
+         "severity": 2, "message": "E302"},
+        {"range": {"start": {"line": 0, "character": 0},
+                   "end":   {"line": 0, "character": 9}},
+         "severity": 1, "message": "invalid syntax"},
+    ])
+    err_tag = buf.get_tag_table().lookup("lsp-diag-error")
+    warn_tag = buf.get_tag_table().lookup("lsp-diag-warning")
+    # Char at col 2: should have error tag, NOT warning tag.
+    it = buf.get_iter_at_line_offset(0, 2)
+    assert it.has_tag(err_tag)
+    assert not it.has_tag(warn_tag)
+
+
+def test_warning_only_chars_keep_warning_tag_when_error_subrange_smaller() -> None:
+    """Warning covers cols 0-9, Error covers cols 5-7. Chars 0-4 keep
+    the warning tag; chars 5-7 get the error tag instead."""
+    buf = _buffer("0123456789\n")
+    ctrl = DiagnosticsController(
+        buffer=buf,
+        severity_underlines={"error": "error", "warning": "error"},
+    )
+    ctrl.apply_diagnostics([
+        {"range": {"start": {"line": 0, "character": 0},
+                   "end":   {"line": 0, "character": 9}},
+         "severity": 2, "message": "warn"},
+        {"range": {"start": {"line": 0, "character": 5},
+                   "end":   {"line": 0, "character": 7}},
+         "severity": 1, "message": "err"},
+    ])
+    err_tag = buf.get_tag_table().lookup("lsp-diag-error")
+    warn_tag = buf.get_tag_table().lookup("lsp-diag-warning")
+    # col 2: warning only.
+    it = buf.get_iter_at_line_offset(0, 2)
+    assert it.has_tag(warn_tag)
+    assert not it.has_tag(err_tag)
+    # col 6: error only.
+    it = buf.get_iter_at_line_offset(0, 6)
+    assert it.has_tag(err_tag)
+    assert not it.has_tag(warn_tag)
+
+
 def test_error_tag_has_higher_priority_than_warning() -> None:
     """When an Error and a Warning diagnostic overlap, the Error's
     underline-rgba must win visually. GTK resolves overlapping
