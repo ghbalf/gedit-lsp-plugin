@@ -66,6 +66,8 @@ def build_preferences_widget(config_path: Path) -> Gtk.Widget:
     open_button = Gtk.Button(label="Edit user config…")
 
     def _on_open_clicked(_b: Gtk.Button) -> None:
+        if not config_path.exists():
+            _save(config_path, user)
         Gio.AppInfo.launch_default_for_uri(f"file://{config_path}", None)
 
     open_button.connect("clicked", _on_open_clicked)

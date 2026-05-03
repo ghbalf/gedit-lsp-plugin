@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 import gi
 
 gi.require_version("Gtk", "3.0")
-gi.require_version("GtkSource", "4")
+gi.require_version("GtkSource", "300")
 from gi.repository import Gtk, GtkSource
 
 from gedit_lsp.utf16 import text_iter_to_utf16

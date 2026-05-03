@@ -8,7 +8,7 @@ from __future__ import annotations
 import gi
 
 gi.require_version("Gtk", "3.0")
-gi.require_version("GtkSource", "4")
+gi.require_version("GtkSource", "300")
 from gi.repository import GtkSource
 
 from gedit_lsp.features.diagnostics import DiagnosticsController

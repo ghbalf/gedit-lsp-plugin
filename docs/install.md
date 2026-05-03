@@ -4,16 +4,18 @@
 
 - gedit ≥ 46
 - libpeas-1.0
-- GtkSourceView-4
+- libgedit-gtksourceview (a GTK3-compatible GtkSourceView fork that gedit
+  links against; exposes the GObject namespace `GtkSource-300`)
 - Python ≥ 3.10
-- GObject introspection bindings: `python3-gi`, `gir1.2-gtk-3.0`, `gir1.2-gtksource-4`
+- GObject introspection bindings: `python3-gi`, `gir1.2-gtk-3.0`,
+  `gir1.2-gtksource-300`
 
 ### Per-distro install commands
 
 **Debian / Ubuntu (24.04+):**
 
 ```bash
-sudo apt install gedit python3-gi gir1.2-gtk-3.0 gir1.2-gtksource-4
+sudo apt install gedit python3-gi gir1.2-gtk-3.0 gir1.2-gtksource-300
 ```
 
 **Fedora (39+):**
@@ -72,7 +74,7 @@ Install the servers for the languages you use. Examples:
 
 | Language | Server | Install command |
 |---|---|---|
-| Python | pylsp | `sudo apt install python3-pylsp` or `pip install --user python-lsp-server` |
+| Python | pylsp | `sudo apt install python3-pylsp python3-pyflakes python3-pycodestyle` or `pip install --user 'python-lsp-server[all]'` — the apt `python3-pylsp` package does **not** pull the analyzers (pyflakes/pycodestyle) as dependencies; without them pylsp connects but publishes no diagnostics |
 | C / C++ | clangd | `sudo apt install clangd` |
 | Rust | rust-analyzer | `rustup component add rust-analyzer` |
 | Go | gopls | `go install golang.org/x/tools/gopls@latest` |

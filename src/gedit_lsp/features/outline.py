@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Any
 import gi
 
 gi.require_version("Gtk", "3.0")
+gi.require_version("Tepl", "6")
 from gi.repository import Gtk
+from gi.repository import Tepl  # type: ignore[attr-defined]
 
 from gedit_lsp.utf16 import utf16_to_text_iter
 
@@ -105,8 +107,14 @@ class OutlineController:
         scrolled = Gtk.ScrolledWindow()
         scrolled.add(self._tree)  # type: ignore[attr-defined]
         scrolled.show_all()  # type: ignore[attr-defined]
+        # Side panel is a TeplPanel (libgedit-tepl interface). Invoke the
+        # interface method explicitly: bare `panel.add(...)` resolves to
+        # the inherited Gtk.Container.add() instead and only takes one
+        # argument.
         panel = window.get_side_panel()
-        panel.add_titled(scrolled, "lsp-outline", "LSP Outline")
+        self._panel_item = Tepl.Panel.add(
+            panel, scrolled, "lsp-outline", "LSP Outline", None
+        )
         self._scrolled = scrolled
 
     def populate(self, items: list[dict[str, Any]]) -> None:

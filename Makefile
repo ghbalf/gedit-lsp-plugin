@@ -29,12 +29,16 @@ uninstall:
 	rm -rf $(HOME)/.local/state/gedit-lsp
 	@echo "Uninstalled. User config at ~/.config/gedit/lsp-plugin.json was NOT removed."
 
+# Strip PYTHONPATH: a system-wide $PYTHONPATH (a pattern some shells set
+# to /usr/lib/python3/dist-packages) prepends apt-installed packages to
+# the venv's sys.path and shadows the venv's pinned versions, which
+# breaks pytest 9.x against system pluggy 1.4.0.
 test:
-	python -m pytest tests/unit
+	env -u PYTHONPATH python -m pytest tests/unit
 
 test-integration:
 	@command -v pylsp >/dev/null 2>&1 || { echo "pylsp not on PATH; install with apt install python3-pylsp or pip install python-lsp-server" >&2; exit 1; }
-	python -m pytest tests/integration
+	env -u PYTHONPATH python -m pytest tests/integration
 
 lint:
 	python -m ruff check src tests
