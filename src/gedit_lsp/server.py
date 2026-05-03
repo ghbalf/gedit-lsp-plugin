@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import enum
 import itertools
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -47,8 +48,14 @@ def real_transport_factory(
     command: list[str],
     log_prefix: str,
     on_exit: Callable[[int], None],
+    on_stderr_line: Callable[[str], None] | None = None,
 ) -> RpcClient:
-    return RpcClient(command=command, log_prefix=log_prefix, on_exit=on_exit)
+    return RpcClient(
+        command=command,
+        log_prefix=log_prefix,
+        on_exit=on_exit,
+        on_stderr_line=on_stderr_line,
+    )
 
 
 class LanguageServer:
@@ -62,6 +69,7 @@ class LanguageServer:
         backoff_schedule: list[int],
         max_restart_attempts: int,
         idle_timeout_seconds: int = 300,
+        stderr_buffer_max_lines: int = 1000,
     ) -> None:
         self.language_id = language_id
         self.root_path = root_path
@@ -80,6 +88,7 @@ class LanguageServer:
         self._idle_source_id: int | None = None
         self._diagnostics_listeners: list[Callable[[dict[str, Any]], None]] = []
         self._state_listeners: list[Callable[[ServerState], None]] = []
+        self._stderr_buffer: deque[str] = deque(maxlen=stderr_buffer_max_lines)
 
     @property
     def state(self) -> ServerState:
@@ -187,6 +196,10 @@ class LanguageServer:
         )
         return req_id
 
+    def recent_stderr(self) -> list[str]:
+        """Return a snapshot of buffered stderr lines (oldest first)."""
+        return list(self._stderr_buffer)
+
     def cancel_request(self, request_id: int) -> None:
         if self._transport is None:
             return
@@ -200,7 +213,10 @@ class LanguageServer:
         self.state = ServerState.STARTING
         log_prefix = f"[{self.language_id}:{Path(self.root_path).name}]"
         self._transport = self._transport_factory(
-            self.command, log_prefix, self._handle_subprocess_exit
+            self.command,
+            log_prefix,
+            self._handle_subprocess_exit,
+            on_stderr_line=self._stderr_buffer.append,
         )
         self._transport.start()
         req_id = next(self._req_ids)

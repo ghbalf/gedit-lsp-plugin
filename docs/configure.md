@@ -69,6 +69,7 @@ works).
 | `hover` | `<Primary>k` | Show the hover popover at the cursor |
 | `goto-definition` | `F12` | Jump to the definition of the symbol at the cursor |
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
+| `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 
 ```json
 { "keybindings": { "hover": "<Primary>i", "goto-definition": ["F12", "<Primary>F12"] } }
@@ -102,6 +103,7 @@ Per-key replacement; missing keys keep their default.
 | `logLspTraffic` | bool | `false` | Whether to write all wire messages to a separate traffic log |
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
+| `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
 | `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline"]` | Which features run |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
 | `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |

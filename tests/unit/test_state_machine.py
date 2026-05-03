@@ -259,3 +259,48 @@ def test_disposing_one_listener_leaves_others_intact(
     server._on_diagnostics({"params": {"uri": "file:///x", "diagnostics": []}})
     assert a == []
     assert len(b) == 1
+
+
+def test_recent_stderr_is_empty_initially(server: LanguageServer) -> None:
+    assert server.recent_stderr() == []
+
+
+def test_stderr_buffer_accumulates_lines_and_drops_old(transport: FakeTransport) -> None:
+    """The stderr buffer is bounded; oldest lines are dropped."""
+    server = LanguageServer(
+        language_id="python",
+        root_path="/tmp/proj",
+        command=["pylsp"],
+        initialization_options=None,
+        transport_factory=lambda *a, **kw: transport,
+        backoff_schedule=[1],
+        max_restart_attempts=1,
+        stderr_buffer_max_lines=3,
+    )
+    for line in ("a", "b", "c", "d"):
+        server._stderr_buffer.append(line)
+    assert server.recent_stderr() == ["b", "c", "d"]
+
+
+def test_transport_factory_receives_on_stderr_line(transport: FakeTransport) -> None:
+    """LanguageServer must wire its stderr-append into the factory call."""
+    captured: dict[str, Any] = {}
+
+    def factory(*args: Any, **kwargs: Any) -> FakeTransport:
+        captured["kwargs"] = kwargs
+        return transport
+
+    server = LanguageServer(
+        language_id="python",
+        root_path="/tmp/proj",
+        command=["pylsp"],
+        initialization_options=None,
+        transport_factory=factory,
+        backoff_schedule=[1],
+        max_restart_attempts=1,
+    )
+    server.attach_buffer("file:///tmp/proj/a.py")
+    on_stderr_line = captured["kwargs"].get("on_stderr_line")
+    assert on_stderr_line is not None
+    on_stderr_line("warning: something happened")
+    assert "warning: something happened" in server.recent_stderr()

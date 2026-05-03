@@ -39,6 +39,7 @@ class ServerRegistry:
                 backoff_schedule=self._config.tunable("restartBackoffSchedule"),
                 max_restart_attempts=self._config.tunable("restartMaxAttempts"),
                 idle_timeout_seconds=self._config.tunable("serverIdleTimeoutSeconds"),
+                stderr_buffer_max_lines=self._config.tunable("stderrBufferMaxLines"),
             )
         return self._servers[key]
 

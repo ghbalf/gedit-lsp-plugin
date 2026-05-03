@@ -21,9 +21,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger("gedit_lsp.popup")
 
 MENU_ITEMS: list[tuple[str, str]] = [
-    ("Show Hover",       "lsp-hover"),
-    ("Go to Definition", "lsp-goto-definition"),
-    ("Go Back",          "lsp-go-back"),
+    ("Show Hover",        "lsp-hover"),
+    ("Go to Definition",  "lsp-goto-definition"),
+    ("Go Back",           "lsp-go-back"),
+    ("Show Server Logs…", "lsp-show-server-logs"),
 ]
 
 

@@ -30,9 +30,10 @@ DEFAULT_ROOT_MARKERS: list[str] = [
 ]
 
 DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
-    "hover":           ["<Primary>k"],
-    "goto-definition": ["F12"],
-    "go-back":         ["<Shift>F12"],
+    "hover":            ["<Primary>k"],
+    "goto-definition":  ["F12"],
+    "go-back":          ["<Shift>F12"],
+    "show-server-logs": [],
 }
 
 DEFAULT_TUNABLES: dict[str, Any] = {
@@ -51,6 +52,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "logLspTraffic": False,
     "maxFileSizeBytes": 5_242_880,
     "showStatusbarIndicator": True,
+    "stderrBufferMaxLines": 1000,
     "enabledFeatures": ["diagnostics", "hover", "definition", "outline"],
     "severityIcons": {
         "error":   "dialog-error-symbolic",

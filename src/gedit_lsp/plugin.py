@@ -46,7 +46,7 @@ from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
 from gedit_lsp.rpc import RpcClient
 from gedit_lsp.server import LanguageServer, ServerState
-from gedit_lsp.ui import popup_menu
+from gedit_lsp.ui import popup_menu, server_logs
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
@@ -84,8 +84,18 @@ def _ensure_globals() -> tuple[Config, ServerRegistry]:
             keep=_config.tunable("logRotationKeepFiles"),
         )
 
-        def factory(command: list[str], log_prefix: str, on_exit: Any) -> RpcClient:
-            return RpcClient(command=command, log_prefix=log_prefix, on_exit=on_exit)
+        def factory(
+            command: list[str],
+            log_prefix: str,
+            on_exit: Any,
+            on_stderr_line: Callable[[str], None] | None = None,
+        ) -> RpcClient:
+            return RpcClient(
+                command=command,
+                log_prefix=log_prefix,
+                on_exit=on_exit,
+                on_stderr_line=on_stderr_line,
+            )
 
         _registry = ServerRegistry(config=_config, transport_factory=factory)
     assert _config is not None and _registry is not None
@@ -150,6 +160,7 @@ class GeditLspPlugin(
             ("lsp-hover", "hover", self._on_hover_activate),
             ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
             ("lsp-go-back", "go-back", self._on_go_back_activate),
+            ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
         ]:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
@@ -394,6 +405,25 @@ class GeditLspPlugin(
     ) -> None:
         logger.info("go-back action invoked")
         self._definition_ctrl.go_back()
+
+    def _on_show_server_logs_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        view = self.window.get_active_view()
+        doc = view.get_buffer() if view is not None else None
+        server = self._servers.get(doc) if doc is not None else None
+        if server is None:
+            dialog = Gtk.MessageDialog(
+                transient_for=self.window,
+                modal=False,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.CLOSE,
+                text="No language server is attached to the current document.",
+            )
+            dialog.connect("response", lambda d, _r: d.destroy())
+            dialog.show_all()  # type: ignore[attr-defined]
+            return
+        server_logs.show(self.window, server)
 
     def _on_server_state(
         self,

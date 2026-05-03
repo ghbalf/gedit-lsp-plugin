@@ -44,9 +44,17 @@ def cfg(tmp_path: Path) -> Config:
 @pytest.fixture
 def registry(cfg: Config) -> ServerRegistry:
     def factory(
-        command: list[str], log_prefix: str, on_exit: Callable[[int], None]
+        command: list[str],
+        log_prefix: str,
+        on_exit: Callable[[int], None],
+        on_stderr_line: Callable[[str], None] | None = None,
     ) -> RpcClient:
-        return RpcClient(command=command, log_prefix=log_prefix, on_exit=on_exit)
+        return RpcClient(
+            command=command,
+            log_prefix=log_prefix,
+            on_exit=on_exit,
+            on_stderr_line=on_stderr_line,
+        )
 
     return ServerRegistry(config=cfg, transport_factory=factory)
 

@@ -110,15 +110,18 @@ class RpcClient:
         on_request: Callable[[dict[str, Any]], None] | None = None,
         on_notification_default: Callable[[dict[str, Any]], None] | None = None,
         on_exit: Callable[[int], None] | None = None,
+        on_stderr_line: Callable[[str], None] | None = None,
     ) -> None:
         self._command = command
         self._log_prefix = log_prefix
         self._on_request = on_request
         self._on_notification_default = on_notification_default
         self._on_exit = on_exit
+        self._on_stderr_line = on_stderr_line
 
         self._proc: Gio.Subprocess | None = None
         self._stdout: Gio.DataInputStream | None = None
+        self._stderr: Gio.DataInputStream | None = None
         self._stdin: Gio.OutputStream | None = None
         self._decoder = FrameDecoder()
         self._response_callbacks: dict[int, Callable[[dict[str, Any]], None]] = {}
@@ -138,8 +141,12 @@ class RpcClient:
         assert stdout_pipe is not None  # STDOUT_PIPE flag was set
         self._stdout = Gio.DataInputStream.new(stdout_pipe)
         self._stdout.set_newline_type(Gio.DataStreamNewlineType.CR_LF)
+        stderr_pipe = self._proc.get_stderr_pipe()
+        assert stderr_pipe is not None  # STDERR_PIPE flag was set
+        self._stderr = Gio.DataInputStream.new(stderr_pipe)
         self._proc.wait_check_async(None, self._on_subprocess_exit)
         self._read_header_line()
+        self._read_stderr_line()
 
     def kill(self) -> None:
         if self._proc is not None:
@@ -242,6 +249,24 @@ class RpcClient:
         elif "method" in msg and "id" in msg:
             if self._on_request is not None:
                 self._on_request(msg)
+
+    def _read_stderr_line(self) -> None:
+        if self._stderr is None:
+            return
+        self._stderr.read_line_async(
+            GLib.PRIORITY_DEFAULT, None, self._on_stderr_line_read
+        )
+
+    def _on_stderr_line_read(self, source: Any, res: Any) -> None:
+        try:
+            line, _length = source.read_line_finish_utf8(res)
+        except GLib.Error:
+            return
+        if line is None:
+            return  # EOF; subprocess exit handler will fire
+        if self._on_stderr_line is not None:
+            self._on_stderr_line(line)
+        self._read_stderr_line()
 
     def _on_subprocess_exit(self, source: Any, res: Any) -> None:
         code = 0
