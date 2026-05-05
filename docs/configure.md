@@ -8,6 +8,10 @@ The plugin reads a single JSON config file:
 
 Missing keys fall through to built-in defaults.
 
+For a fully-worked example exercising every configurable parameter, see
+[`example-config.json`](example-config.json) and its walkthrough in
+[`example-config.md`](example-config.md).
+
 ## Top-level structure
 
 ```json
