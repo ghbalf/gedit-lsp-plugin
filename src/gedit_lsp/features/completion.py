@@ -268,7 +268,19 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
             self._server.cancel_request(self._inflight_id)
             self._inflight_id = None
 
+        # Mutable holder so the closure can match against the id we receive
+        # back from _send_request — the id doesn't exist until after the call,
+        # but the closure is captured before. This pattern is safe because
+        # responses always arrive *after* _send_request returns (async via
+        # GLib main loop).
+        my_id: list[int | None] = [None]
+
         def on_response(msg: dict[str, Any]) -> None:
+            # Discard if we've moved past this request — a superseded request's
+            # response must NOT mutate self._last_was_incomplete or push
+            # proposals to a stale context.
+            if self._inflight_id is None or self._inflight_id != my_id[0]:
+                return
             if msg.get("error"):
                 logger.info("completion error: %r", msg.get("error"))
                 context.add_proposals(self, [], True)  # type: ignore[attr-defined]
@@ -279,9 +291,14 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
             gtk_proposals = [_LspCompletionProposal(p) for p in proposals]
             context.add_proposals(self, gtk_proposals, True)  # type: ignore[attr-defined]
 
-        self._inflight_id = self._server._send_request(
+        new_id = self._server._send_request(
             "textDocument/completion", params, on_response
         )
+        # _send_request returns -1 if the transport is None (server still
+        # starting / crashed). Store None in that case so we don't try to
+        # cancel a nonsense id later.
+        self._inflight_id = new_id if new_id != -1 else None
+        my_id[0] = self._inflight_id
 
     def do_activate_proposal(
         self,
@@ -296,12 +313,11 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]
     ) -> str | None:
-        if not trigger_chars:
+        non_empty = [t for t in trigger_chars if t]
+        if not non_empty:
             return None
-        max_len = max(len(t) for t in trigger_chars if t)
-        if max_len <= 0:
-            return None
+        max_len = max(len(t) for t in non_empty)
         start = cursor.copy()
         start.backward_chars(max_len)
         text_before = start.get_text(cursor)
-        return matched_trigger_suffix(text_before, trigger_chars)
+        return matched_trigger_suffix(text_before, non_empty)

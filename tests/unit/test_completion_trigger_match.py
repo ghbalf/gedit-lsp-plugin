@@ -26,3 +26,9 @@ def test_longest_match_wins() -> None:
     assert matched_trigger_suffix("foo->", [">", "->"]) == "->"
     # And reverse order in the trigger list shouldn't change the result.
     assert matched_trigger_suffix("foo->", ["->", ">"]) == "->"
+
+
+def test_only_empty_trigger_chars_returns_none() -> None:
+    """Pathological input — list contains only empty strings (e.g. from a
+    misbehaving server). Must return None, not raise."""
+    assert matched_trigger_suffix("foo.", ["", ""]) is None
