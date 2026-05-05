@@ -1,6 +1,8 @@
 """Tests for server-capabilities tracking and override application."""
 from __future__ import annotations
 
+from typing import Any
+
 from gedit_lsp.server import _merge_capabilities
 
 
@@ -39,3 +41,23 @@ def test_merge_capabilities_lists_are_replaced_not_concatenated() -> None:
     overrides  = {"completionProvider": {"triggerCharacters": ["."]}}
     merged = _merge_capabilities(server_caps, overrides)
     assert merged["completionProvider"]["triggerCharacters"] == ["."]
+
+
+def test_merge_capabilities_dict_replaces_non_dict() -> None:
+    """When override has a dict but server has a non-dict at the same key,
+    the override replaces wholesale (no merge attempt)."""
+    server_caps = {"hoverProvider": True}
+    overrides = {"hoverProvider": {"workDoneProgress": True}}
+    merged = _merge_capabilities(server_caps, overrides)
+    assert merged == {"hoverProvider": {"workDoneProgress": True}}
+
+
+def test_merge_capabilities_result_is_independent_of_inputs() -> None:
+    """Mutating the result must not affect either input — the function
+    returns a structure with no shared references."""
+    server_caps = {"completionProvider": {"triggerCharacters": ["."]}}
+    overrides: dict[str, Any] = {}
+    merged = _merge_capabilities(server_caps, overrides)
+    # Mutate the result; inputs must be untouched.
+    merged["completionProvider"]["triggerCharacters"].append("->")
+    assert server_caps == {"completionProvider": {"triggerCharacters": ["."]}}

@@ -8,6 +8,7 @@ fake.
 from __future__ import annotations
 
 import contextlib
+import copy
 import enum
 import itertools
 from collections import deque
@@ -59,23 +60,20 @@ def real_transport_factory(
 
 
 def _merge_capabilities(server: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    """Deep-merge `overrides` on top of `server` capabilities.
+    """Deep-merge `overrides` on top of `server` capabilities, returning a fresh dict.
 
     Dicts are recursively merged; non-dict values (bools, lists, scalars) are
     replaced wholesale. Lists are *replaced*, not concatenated — overriding
-    `triggerCharacters: ["."]` narrows the set rather than appending.
+    `triggerCharacters: ["."]` narrows the set rather than appending. The
+    returned dict shares no references with either input; callers may mutate
+    it freely.
     """
-    if not overrides:
-        return dict(server)
-    out: dict[str, Any] = dict(server)
+    out: dict[str, Any] = copy.deepcopy(server)
     for key, value in overrides.items():
-        if (
-            isinstance(value, dict)
-            and isinstance(out.get(key), dict)
-        ):
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
             out[key] = _merge_capabilities(out[key], value)
         else:
-            out[key] = value
+            out[key] = copy.deepcopy(value)
     return out
 
 
