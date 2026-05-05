@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from gedit_lsp.server import LanguageServer
 
 
 class CompletionTriggerKind(enum.IntEnum):
@@ -148,3 +151,157 @@ def response_is_incomplete(response: Any) -> bool:
     if isinstance(response, dict):
         return bool(response.get("isIncomplete", False))
     return False
+
+
+def matched_trigger_suffix(text_before_cursor: str, trigger_chars: list[str]) -> str | None:
+    """Return the longest entry from `trigger_chars` that ends `text_before_cursor`, or None.
+
+    Handles both single-char (e.g. `.`) and multi-char (e.g. `->`) triggers.
+    Empty trigger entries in the list are ignored. Length comparison is by
+    Python `len()` (codepoints), which is fine for ASCII triggers.
+    """
+    best: str | None = None
+    for t in trigger_chars:
+        if t and text_before_cursor.endswith(t) and (best is None or len(t) > len(best)):
+            best = t
+    return best
+
+
+import logging  # noqa: E402
+
+import gi  # noqa: E402
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkSource", "300")
+from gi.repository import GObject, Gtk, GtkSource  # noqa: E402
+
+from gedit_lsp.utf16 import text_iter_to_utf16  # noqa: E402
+
+logger = logging.getLogger("gedit_lsp.completion")
+
+
+class _LspCompletionProposal(GObject.Object, GtkSource.CompletionProposal):
+    """A single proposal exposed to GtkSource."""
+
+    def __init__(self, lsp: LspProposal) -> None:
+        GObject.Object.__init__(self)
+        self.lsp = lsp
+
+    def do_get_label(self) -> str:
+        return self.lsp.label
+
+    def do_get_text(self) -> str:
+        return self.lsp.insert_text
+
+    def do_get_info(self) -> str:
+        # Used by the info popup; we render plain text (markdown is
+        # stringified upstream).
+        return self.lsp.documentation
+
+
+class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
+    """GtkSource.CompletionProvider that fires LSP completion requests.
+
+    One instance per (buffer, server). The provider is registered with the
+    view's CompletionContext and disposed on tab-removed / plugin
+    deactivate (see `CompletionController.dispose` in plugin wiring).
+    """
+
+    def __init__(
+        self,
+        *,
+        view: Gtk.TextView,
+        buffer: GtkSource.Buffer,
+        server: LanguageServer,
+        uri: str,
+    ) -> None:
+        GObject.Object.__init__(self)
+        self._view = view
+        self._buffer = buffer
+        self._server = server
+        self._uri = uri
+        self._last_was_incomplete = False
+        self._inflight_id: int | None = None
+
+    def do_get_name(self) -> str:
+        return "LSP"
+
+    def do_get_priority(self) -> int:
+        return 100  # higher than the default word provider (~10)
+
+    def do_get_activation(self) -> GtkSource.CompletionActivation:
+        # USER_REQUESTED so Ctrl+Space invokes us; INTERACTIVE so trigger
+        # characters auto-fire as the user types.
+        return GtkSource.CompletionActivation.USER_REQUESTED | GtkSource.CompletionActivation.INTERACTIVE  # type: ignore[return-value]
+
+    def do_match(self, _context: GtkSource.CompletionContext) -> bool:
+        cap = self._server.capability("completionProvider")
+        return is_completion_supported(cap)
+
+    def do_populate(self, context: GtkSource.CompletionContext) -> None:
+        cap = self._server.capability("completionProvider")
+        trigger_chars = trigger_characters_from(cap)
+
+        cursor = self._buffer.get_iter_at_mark(self._buffer.get_insert())
+        line, char = text_iter_to_utf16(cursor)
+
+        # Look back up to max-trigger-length chars to find a multi-char
+        # trigger like `->` or `::`. Single-char triggers fall out of the
+        # same suffix-match.
+        matched = self._matched_trigger_at(cursor, trigger_chars)
+
+        kind, trig_char = classify_trigger(
+            typed_char=matched,
+            trigger_chars=trigger_chars,
+            list_is_incomplete=self._last_was_incomplete,
+        )
+
+        params = build_completion_params(
+            uri=self._uri,
+            line=line,
+            character=char,
+            trigger_kind=kind,
+            trigger_character=trig_char,
+        )
+
+        if self._inflight_id is not None:
+            self._server.cancel_request(self._inflight_id)
+            self._inflight_id = None
+
+        def on_response(msg: dict[str, Any]) -> None:
+            if msg.get("error"):
+                logger.info("completion error: %r", msg.get("error"))
+                context.add_proposals(self, [], True)  # type: ignore[attr-defined]
+                return
+            result = msg.get("result")
+            self._last_was_incomplete = response_is_incomplete(result)
+            proposals = extract_completion_items(result)
+            gtk_proposals = [_LspCompletionProposal(p) for p in proposals]
+            context.add_proposals(self, gtk_proposals, True)  # type: ignore[attr-defined]
+
+        self._inflight_id = self._server._send_request(
+            "textDocument/completion", params, on_response
+        )
+
+    def do_activate_proposal(
+        self,
+        _proposal: GtkSource.CompletionProposal,
+        _iter: Gtk.TextIter,
+    ) -> bool:
+        # Returning False signals "use GtkSource's default activation",
+        # which inserts proposal.get_text() at the iter. Snippet support
+        # is a separate plan (out of scope for v0.2.0).
+        return False
+
+    def _matched_trigger_at(
+        self, cursor: Gtk.TextIter, trigger_chars: list[str]
+    ) -> str | None:
+        if not trigger_chars:
+            return None
+        max_len = max(len(t) for t in trigger_chars if t)
+        if max_len <= 0:
+            return None
+        start = cursor.copy()
+        start.backward_chars(max_len)
+        text_before = start.get_text(cursor)
+        return matched_trigger_suffix(text_before, trigger_chars)
