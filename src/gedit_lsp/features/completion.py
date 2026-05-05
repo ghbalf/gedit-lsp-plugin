@@ -6,6 +6,7 @@ later tasks.
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import enum
 from typing import TYPE_CHECKING, Any
@@ -321,3 +322,34 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         start.backward_chars(max_len)
         text_before = start.get_text(cursor)
         return matched_trigger_suffix(text_before, non_empty)
+
+
+class CompletionController:
+    """Per-buffer wrapper that registers/unregisters the LspCompletionProvider.
+
+    Lifecycle: constructed when `_attach_document` runs; `dispose()` called
+    from `plugin.py` on tab-removed or `do_deactivate`. Mirrors the disposer
+    pattern used elsewhere in the plugin.
+    """
+
+    def __init__(
+        self,
+        *,
+        view: Gtk.TextView,
+        buffer: GtkSource.Buffer,
+        server: LanguageServer,
+        uri: str,
+    ) -> None:
+        self._view = view
+        self._provider = LspCompletionProvider(
+            view=view, buffer=buffer, server=server, uri=uri
+        )
+        completion = view.get_completion()  # type: ignore[attr-defined]
+        if completion is not None:
+            completion.add_provider(self._provider)
+
+    def dispose(self) -> None:
+        completion = self._view.get_completion()  # type: ignore[attr-defined]
+        if completion is not None:
+            with contextlib.suppress(Exception):
+                completion.remove_provider(self._provider)

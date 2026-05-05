@@ -37,6 +37,7 @@ from gi.repository import (  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
+from gedit_lsp.features.completion import CompletionController
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.hover import HoverController
@@ -124,6 +125,7 @@ class GeditLspPlugin(
         self._servers: dict[Gedit.Document, LanguageServer] = {}
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._listener_disposers: dict[Gedit.Document, list[Callable[[], None]]] = {}
+        self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -189,6 +191,9 @@ class GeditLspPlugin(
         self._bridges.clear()
         self._servers.clear()
         self._diagnostics_ctrls.clear()
+        for ctrl in self._completion_ctrls.values():
+            ctrl.dispose()
+        self._completion_ctrls.clear()
         for disposers in self._listener_disposers.values():
             for dispose in disposers:
                 dispose()
@@ -226,6 +231,9 @@ class GeditLspPlugin(
         self._diagnostics_ctrls.pop(doc, None)
         for dispose in self._listener_disposers.pop(doc, []):
             dispose()
+        ctrl = self._completion_ctrls.pop(doc, None)
+        if ctrl is not None:
+            ctrl.dispose()
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:
@@ -320,6 +328,20 @@ class GeditLspPlugin(
 
         disposers.append(server.add_diagnostics_listener(_on_diag))
         self._listener_disposers[doc] = disposers
+
+        # Wire LSP completion if enabled in config.
+        if "completion" in self._config.tunable("enabledFeatures"):
+            view = next(
+                (v for v in self.window.get_views() if v.get_buffer() is doc),
+                None,
+            )
+            if view is not None:
+                self._completion_ctrls[doc] = CompletionController(
+                    view=view, buffer=doc, server=server, uri=uri,
+                )
+                logger.info("attached LSP completion provider for %s", path)
+            else:
+                logger.info("skip completion attach: no view for doc")
 
         def _request_outline() -> bool:
             def _on_outline(msg: dict[str, Any]) -> None:
