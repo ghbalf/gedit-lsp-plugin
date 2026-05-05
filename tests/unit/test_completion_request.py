@@ -36,3 +36,17 @@ def test_build_completion_params_for_incomplete() -> None:
         trigger_character=None,
     )
     assert params["context"] == {"triggerKind": 3}
+
+
+def test_build_completion_params_trigger_character_none_omits_key() -> None:
+    """When trigger_kind is TriggerCharacter but no char is given (caller bug),
+    triggerCharacter is omitted rather than crashing — documents the
+    silent-omission contract of the truthiness guard.
+    """
+    params = build_completion_params(
+        uri="file:///x", line=0, character=0,
+        trigger_kind=CompletionTriggerKind.TriggerCharacter,
+        trigger_character=None,
+    )
+    assert "triggerCharacter" not in params["context"]
+    assert params["context"]["triggerKind"] == 2
