@@ -102,3 +102,19 @@ def test_capability_unknown_key_returns_none() -> None:
     server = _make_server()
     server._apply_initialize_capabilities({"hoverProvider": True})
     assert server.capability("nonexistentProvider") is None
+
+
+def test_overrides_dict_subkey_isolation_per_language() -> None:
+    """Capability overrides are looked up per language at the call site;
+    a Python-only override must not leak into a C server.
+    Sanity test: just make sure the override stored on the server is the
+    per-language slice the caller passed in (the plugin is responsible for
+    slicing config['serverCapabilityOverrides'][lang] before construction).
+    """
+    server = _make_server({"hoverProvider": False})
+    assert server._capability_overrides == {"hoverProvider": False}
+    other = _make_server({"completionProvider": {"resolveProvider": False}})
+    assert other._capability_overrides == {"completionProvider": {"resolveProvider": False}}
+    # The two servers must have independent override dicts (no shared mutation).
+    server._capability_overrides["leak"] = True
+    assert "leak" not in other._capability_overrides

@@ -30,6 +30,8 @@ class ServerRegistry:
             return None
         key = (language_id, str(root_path))
         if key not in self._servers:
+            overrides_all = self._config.tunable("serverCapabilityOverrides") or {}
+            language_overrides = overrides_all.get(language_id, {})
             self._servers[key] = LanguageServer(
                 language_id=language_id,
                 root_path=str(root_path),
@@ -40,6 +42,7 @@ class ServerRegistry:
                 max_restart_attempts=self._config.tunable("restartMaxAttempts"),
                 idle_timeout_seconds=self._config.tunable("serverIdleTimeoutSeconds"),
                 stderr_buffer_max_lines=self._config.tunable("stderrBufferMaxLines"),
+                server_capability_overrides=language_overrides,
             )
         return self._servers[key]
 
