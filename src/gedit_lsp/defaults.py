@@ -53,7 +53,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "maxFileSizeBytes": 5_242_880,
     "showStatusbarIndicator": True,
     "stderrBufferMaxLines": 1000,
-    "enabledFeatures": ["diagnostics", "hover", "definition", "outline"],
+    "enabledFeatures": ["diagnostics", "hover", "definition", "outline", "completion"],
     "severityIcons": {
         "error":   "dialog-error-symbolic",
         "warning": "dialog-warning-symbolic",
