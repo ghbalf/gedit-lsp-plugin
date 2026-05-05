@@ -89,6 +89,7 @@ class LanguageServer:
         max_restart_attempts: int,
         idle_timeout_seconds: int = 300,
         stderr_buffer_max_lines: int = 1000,
+        server_capability_overrides: dict[str, Any] | None = None,
     ) -> None:
         self.language_id = language_id
         self.root_path = root_path
@@ -98,6 +99,8 @@ class LanguageServer:
         self._backoff_schedule = backoff_schedule
         self._max_restart_attempts = max_restart_attempts
         self._idle_timeout_seconds = idle_timeout_seconds
+        self._capability_overrides: dict[str, Any] = dict(server_capability_overrides or {})
+        self._capabilities: dict[str, Any] | None = None  # set on initialize response
 
         self._state: ServerState = ServerState.NOT_RUNNING
         self._transport: Transport | None = None
@@ -219,6 +222,20 @@ class LanguageServer:
         """Return a snapshot of buffered stderr lines (oldest first)."""
         return list(self._stderr_buffer)
 
+    def capability(self, key: str) -> Any:
+        """Return the merged-with-overrides capability value for `key`, or None.
+
+        Returns None before the initialize response arrives. After it arrives,
+        returns the server's reported value with `serverCapabilityOverrides`
+        deep-merged on top.
+        """
+        if self._capabilities is None:
+            return None
+        return self._capabilities.get(key)
+
+    def _apply_initialize_capabilities(self, server_caps: dict[str, Any]) -> None:
+        self._capabilities = _merge_capabilities(server_caps, self._capability_overrides)
+
     def cancel_request(self, request_id: int) -> None:
         if self._transport is None:
             return
@@ -264,6 +281,8 @@ class LanguageServer:
         if msg.get("error"):
             self._handle_failed_start()
             return
+        result = msg.get("result") or {}
+        self._apply_initialize_capabilities(result.get("capabilities") or {})
         # Send `initialized` notification per LSP spec.
         assert self._transport is not None
         self._transport.send(
