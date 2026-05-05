@@ -38,3 +38,25 @@ def build_completion_params(
         "position": {"line": line, "character": character},
         "context": context,
     }
+
+
+def is_completion_supported(capability: dict[str, Any] | None) -> bool:
+    """Return True if the server's `completionProvider` capability is present
+    and has any concrete configuration. We treat `None` and `{}` as "not
+    supported" — a server that returns an empty completionProvider gives us
+    no trigger characters and no resolveProvider hint, so there's nothing
+    to wire up.
+    """
+    return bool(capability)
+
+
+def trigger_characters_from(capability: dict[str, Any] | None) -> list[str]:
+    if not capability:
+        return []
+    return list(capability.get("triggerCharacters", []) or [])
+
+
+def resolve_provider_from(capability: dict[str, Any] | None) -> bool:
+    if not capability:
+        return False
+    return bool(capability.get("resolveProvider", False))
