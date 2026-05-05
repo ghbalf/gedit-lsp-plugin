@@ -6,6 +6,7 @@ later tasks.
 """
 from __future__ import annotations
 
+import dataclasses
 import enum
 from typing import Any
 
@@ -82,3 +83,64 @@ def classify_trigger(
     if typed_char is not None and typed_char in trigger_chars:
         return (CompletionTriggerKind.TriggerCharacter, typed_char)
     return (CompletionTriggerKind.Invoked, None)
+
+
+@dataclasses.dataclass(frozen=True)
+class LspProposal:
+    """Display-ready, GTK-free representation of a single completion proposal.
+
+    `raw_item` retains the original LSP CompletionItem dict so we can pass
+    it back to `completionItem/resolve` later.
+    """
+    label: str
+    insert_text: str
+    detail: str | None
+    kind: int | None        # LSP CompletionItemKind enum value
+    documentation: str
+    sort_text: str
+    filter_text: str
+    raw_item: dict[str, Any]
+
+
+def _stringify_documentation(doc: Any) -> str:
+    """Mirror render_hover_contents shape — strings, MarkupContent dicts, None."""
+    if doc is None:
+        return ""
+    if isinstance(doc, str):
+        return doc
+    if isinstance(doc, dict):
+        return str(doc.get("value", ""))
+    return ""
+
+
+def lsp_item_to_proposal(item: dict[str, Any]) -> LspProposal:
+    label = str(item.get("label", ""))
+    return LspProposal(
+        label=label,
+        insert_text=str(item.get("insertText") or label),
+        detail=item.get("detail"),
+        kind=item.get("kind"),
+        documentation=_stringify_documentation(item.get("documentation")),
+        sort_text=str(item.get("sortText") or label),
+        filter_text=str(item.get("filterText") or label),
+        raw_item=item,
+    )
+
+
+def extract_completion_items(response: Any) -> list[LspProposal]:
+    """Normalise both LSP response shapes (`CompletionItem[]` and
+    `CompletionList`) and return a list of LspProposal."""
+    if response is None:
+        return []
+    if isinstance(response, list):
+        return [lsp_item_to_proposal(it) for it in response]
+    if isinstance(response, dict):
+        items = response.get("items") or []
+        return [lsp_item_to_proposal(it) for it in items]
+    return []
+
+
+def response_is_incomplete(response: Any) -> bool:
+    if isinstance(response, dict):
+        return bool(response.get("isIncomplete", False))
+    return False
