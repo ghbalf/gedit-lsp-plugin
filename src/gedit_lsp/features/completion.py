@@ -103,13 +103,17 @@ class LspProposal:
 
 
 def _stringify_documentation(doc: Any) -> str:
-    """Mirror render_hover_contents shape — strings, MarkupContent dicts, None."""
+    """Mirror render_hover_contents shape — strings, MarkupContent dicts,
+    list-of-the-above (rare for completion but seen on misbehaving servers),
+    None."""
     if doc is None:
         return ""
     if isinstance(doc, str):
         return doc
     if isinstance(doc, dict):
         return str(doc.get("value", ""))
+    if isinstance(doc, list):
+        return "\n\n".join(_stringify_documentation(c) for c in doc).strip()
     return ""
 
 

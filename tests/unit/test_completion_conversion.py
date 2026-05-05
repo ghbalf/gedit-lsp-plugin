@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 from gedit_lsp.features.completion import (
-    LspProposal,
     extract_completion_items,
     lsp_item_to_proposal,
+    response_is_incomplete,
 )
 
 
 def test_lsp_item_minimal_label_only() -> None:
     p = lsp_item_to_proposal({"label": "foo"})
-    assert isinstance(p, LspProposal)
     assert p.label == "foo"
     assert p.insert_text == "foo"           # falls back to label
     assert p.detail is None
@@ -68,8 +67,18 @@ def test_extract_completion_items_handles_empty_object() -> None:
 def test_extract_completion_list_preserves_isincomplete() -> None:
     """Caller needs to know if the list was incomplete — we expose it via
     a sibling helper since extract_ returns proposals only."""
-    from gedit_lsp.features.completion import response_is_incomplete
     assert response_is_incomplete(None) is False
     assert response_is_incomplete([]) is False
     assert response_is_incomplete({"isIncomplete": True, "items": []}) is True
     assert response_is_incomplete({"isIncomplete": False, "items": []}) is False
+
+
+def test_lsp_item_documentation_list_form() -> None:
+    """Some servers return a list of strings/MarkupContent for documentation
+    even though spec says single string|MarkupContent. Handle defensively."""
+    p = lsp_item_to_proposal({
+        "label": "x",
+        "documentation": ["first paragraph", {"kind": "markdown", "value": "second"}],
+    })
+    assert "first paragraph" in p.documentation
+    assert "second" in p.documentation
