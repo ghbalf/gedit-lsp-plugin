@@ -1,0 +1,98 @@
+{
+  "servers": {
+    "python": {
+      "command": ["pylsp"]
+    },
+    "rust": {
+      "command": ["rust-analyzer"]
+    },
+    "haskell": {
+      "command": ["haskell-language-server-wrapper", "--lsp"]
+    }
+  },
+
+  "rootMarkers": {
+    "python":  ["pyproject.toml", "setup.py", ".git"],
+    "rust":    ["Cargo.toml", ".git"],
+    "haskell": ["stack.yaml", "cabal.project", ".git"]
+  },
+
+  "initializationOptions": {
+    "python": {
+      "pylsp": {
+        "plugins": {
+          "pylsp_mypy":   { "enabled": true, "live_mode": true },
+          "pycodestyle":  { "enabled": false },
+          "pyflakes":     { "enabled": true },
+          "rope_completion": { "enabled": true }
+        }
+      }
+    }
+  },
+
+  "keybindings": {
+    "hover":            "<Primary>i",
+    "goto-definition":  ["F12", "<Primary>F12"],
+    "go-back":          "<Shift>F12",
+    "show-server-logs": "F11"
+  },
+
+  "tunables": {
+    "serverIdleTimeoutSeconds":  600,
+    "changeDebounceMs":          200,
+    "outlineRefreshDebounceMs":  2500,
+    "outlineInitialDelayMs":     1000,
+    "hoverSpinnerThresholdMs":   300,
+    "requestTimeoutMs":          15000,
+    "gotoHistoryMaxEntries":     100,
+
+    "restartBackoffSchedule":    [1, 2, 4, 8, 16, 30],
+    "restartMaxAttempts":        5,
+
+    "logLevel":                  "info",
+    "logRotationMaxBytes":       5242880,
+    "logRotationKeepFiles":      3,
+    "logLspTraffic":             false,
+
+    "maxFileSizeBytes":          5242880,
+    "showStatusbarIndicator":    true,
+    "stderrBufferMaxLines":      1000,
+
+    "enabledFeatures": ["diagnostics", "hover", "definition", "outline"],
+
+    "severityIcons": {
+      "error":   "dialog-error-symbolic",
+      "warning": "dialog-warning-symbolic",
+      "info":    "dialog-information-symbolic",
+      "hint":    "dialog-information-symbolic"
+    },
+    "severityUnderlineStyle": {
+      "error":   "error",
+      "warning": "error",
+      "info":    "single",
+      "hint":    "single"
+    },
+    "severityUnderlineColor": {
+      "error":   "#e01b24",
+      "warning": "#e5a50a",
+      "info":    "#62a0ea",
+      "hint":    ""
+    },
+
+    "disabledForPaths": [
+      "**/.venv/**",
+      "**/node_modules/**",
+      "**/.tox/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/vendor/**",
+      "**/generated/**"
+    ],
+
+    "serverCapabilityOverrides": {
+      "c":      { "completionProvider": { "triggerCharacters": [".", "->"] } },
+      "cpp":    { "completionProvider": { "triggerCharacters": [".", "->", "::"] } },
+      "python": { "hoverProvider": true }
+    }
+  }
+}
