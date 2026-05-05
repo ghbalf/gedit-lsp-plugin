@@ -99,7 +99,7 @@ class LanguageServer:
         self._backoff_schedule = backoff_schedule
         self._max_restart_attempts = max_restart_attempts
         self._idle_timeout_seconds = idle_timeout_seconds
-        self._capability_overrides: dict[str, Any] = dict(server_capability_overrides or {})
+        self._capability_overrides: dict[str, Any] = copy.deepcopy(server_capability_overrides or {})
         self._capabilities: dict[str, Any] | None = None  # set on initialize response
 
         self._state: ServerState = ServerState.NOT_RUNNING
@@ -226,12 +226,13 @@ class LanguageServer:
         """Return the merged-with-overrides capability value for `key`, or None.
 
         Returns None before the initialize response arrives. After it arrives,
-        returns the server's reported value with `serverCapabilityOverrides`
-        deep-merged on top.
+        returns a deep copy of the server's reported value (with
+        `serverCapabilityOverrides` merged on top), so callers may inspect or
+        mutate the result without affecting future calls.
         """
         if self._capabilities is None:
             return None
-        return self._capabilities.get(key)
+        return copy.deepcopy(self._capabilities.get(key))
 
     def _apply_initialize_capabilities(self, server_caps: dict[str, Any]) -> None:
         self._capabilities = _merge_capabilities(server_caps, self._capability_overrides)

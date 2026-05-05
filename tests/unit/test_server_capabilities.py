@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gedit_lsp.server import _merge_capabilities
+from gedit_lsp.server import LanguageServer, _merge_capabilities
 
 
 def test_merge_capabilities_no_overrides_returns_server_caps() -> None:
@@ -61,9 +61,6 @@ def test_merge_capabilities_result_is_independent_of_inputs() -> None:
     # Mutate the result; inputs must be untouched.
     merged["completionProvider"]["triggerCharacters"].append("->")
     assert server_caps == {"completionProvider": {"triggerCharacters": ["."]}}
-
-
-from gedit_lsp.server import LanguageServer, ServerState  # noqa: E402
 
 
 def _make_server(capability_overrides: dict[str, Any] | None = None) -> LanguageServer:
