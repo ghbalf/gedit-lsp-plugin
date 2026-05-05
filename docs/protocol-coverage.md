@@ -8,3 +8,4 @@
 | `textDocument/hover` | ✓ |
 | `textDocument/definition` | ✓ |
 | `textDocument/documentSymbol` | ✓ |
+| `textDocument/completion` (data layer only; provider wiring in Phase 2) | ⏳ |
