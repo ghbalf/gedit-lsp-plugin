@@ -60,3 +60,25 @@ def resolve_provider_from(capability: dict[str, Any] | None) -> bool:
     if not capability:
         return False
     return bool(capability.get("resolveProvider", False))
+
+
+def classify_trigger(
+    *,
+    typed_char: str | None,
+    trigger_chars: list[str],
+    list_is_incomplete: bool,
+) -> tuple[CompletionTriggerKind, str | None]:
+    """Map (typed_char, server trigger chars, prior isIncomplete) to an LSP
+    CompletionContext shape.
+
+    Returns (kind, character_to_send).
+
+    The caller is responsible for matching multi-character triggers (e.g.
+    `->`); if it determined a multi-char suffix matched, it passes that
+    suffix as `typed_char`. We only check for membership in `trigger_chars`.
+    """
+    if list_is_incomplete:
+        return (CompletionTriggerKind.TriggerForIncompleteCompletions, None)
+    if typed_char is not None and typed_char in trigger_chars:
+        return (CompletionTriggerKind.TriggerCharacter, typed_char)
+    return (CompletionTriggerKind.Invoked, None)
