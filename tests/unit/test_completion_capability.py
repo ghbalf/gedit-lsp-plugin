@@ -18,8 +18,10 @@ def test_is_completion_supported_present_dict() -> None:
 
 
 def test_is_completion_supported_present_empty_dict() -> None:
-    # Server reports support but configures nothing — still supported.
-    assert is_completion_supported({}) is False  # we treat absent capability as no support
+    # Empty dict is falsy → treated as "not supported."
+    assert is_completion_supported({}) is False
+    # Non-empty dict is truthy regardless of value, so a server that explicitly
+    # advertises `resolveProvider: false` is still considered supported.
     assert is_completion_supported({"resolveProvider": False}) is True
 
 
