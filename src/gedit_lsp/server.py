@@ -8,6 +8,7 @@ fake.
 from __future__ import annotations
 
 import contextlib
+import copy
 import enum
 import itertools
 from collections import deque
@@ -58,6 +59,24 @@ def real_transport_factory(
     )
 
 
+def _merge_capabilities(server: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge `overrides` on top of `server` capabilities, returning a fresh dict.
+
+    Dicts are recursively merged; non-dict values (bools, lists, scalars) are
+    replaced wholesale. Lists are *replaced*, not concatenated — overriding
+    `triggerCharacters: ["."]` narrows the set rather than appending. The
+    returned dict shares no references with either input; callers may mutate
+    it freely.
+    """
+    out: dict[str, Any] = copy.deepcopy(server)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _merge_capabilities(out[key], value)
+        else:
+            out[key] = copy.deepcopy(value)
+    return out
+
+
 class LanguageServer:
     def __init__(
         self,
@@ -70,6 +89,7 @@ class LanguageServer:
         max_restart_attempts: int,
         idle_timeout_seconds: int = 300,
         stderr_buffer_max_lines: int = 1000,
+        server_capability_overrides: dict[str, Any] | None = None,
     ) -> None:
         self.language_id = language_id
         self.root_path = root_path
@@ -79,6 +99,8 @@ class LanguageServer:
         self._backoff_schedule = backoff_schedule
         self._max_restart_attempts = max_restart_attempts
         self._idle_timeout_seconds = idle_timeout_seconds
+        self._capability_overrides: dict[str, Any] = copy.deepcopy(server_capability_overrides or {})
+        self._capabilities: dict[str, Any] | None = None  # set on initialize response
 
         self._state: ServerState = ServerState.NOT_RUNNING
         self._transport: Transport | None = None
@@ -200,6 +222,21 @@ class LanguageServer:
         """Return a snapshot of buffered stderr lines (oldest first)."""
         return list(self._stderr_buffer)
 
+    def capability(self, key: str) -> Any:
+        """Return the merged-with-overrides capability value for `key`, or None.
+
+        Returns None before the initialize response arrives. After it arrives,
+        returns a deep copy of the server's reported value (with
+        `serverCapabilityOverrides` merged on top), so callers may inspect or
+        mutate the result without affecting future calls.
+        """
+        if self._capabilities is None:
+            return None
+        return copy.deepcopy(self._capabilities.get(key))
+
+    def _apply_initialize_capabilities(self, server_caps: dict[str, Any]) -> None:
+        self._capabilities = _merge_capabilities(server_caps, self._capability_overrides)
+
     def cancel_request(self, request_id: int) -> None:
         if self._transport is None:
             return
@@ -245,6 +282,8 @@ class LanguageServer:
         if msg.get("error"):
             self._handle_failed_start()
             return
+        result = msg.get("result") or {}
+        self._apply_initialize_capabilities(result.get("capabilities") or {})
         # Send `initialized` notification per LSP spec.
         assert self._transport is not None
         self._transport.send(
