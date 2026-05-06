@@ -249,9 +249,10 @@ class CompletionDocsController:
             scrolled.set_max_content_height(360)
             scrolled.add(self._ensure_label())  # type: ignore[attr-defined]
             popover.add(scrolled)  # type: ignore[attr-defined]
-            # Don't call show_all() here — popup() shows children when
-            # invoked, and pre-showing risks a flash at (0,0) before the
-            # first set_pointing_to anchor lands.
+            # show_all() realizes/maps children — without it, popup()
+            # shows an empty/invisible window on libgedit-gtksourceview.
+            # Matches the working hover popover pattern in features/hover.py.
+            popover.show_all()  # type: ignore[attr-defined]
             self._popover = popover
         return self._popover
 
