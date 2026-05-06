@@ -139,6 +139,9 @@ def merge_resolved_item(base: LspProposal, resolved: dict[str, Any]) -> LspPropo
     """Replace `base` fields with values from a `completionItem/resolve`
     response. The resolved server payload wins — we trust later, more
     detailed information over the initial item."""
+    # Note: sortText/filterText fall back to `label` if `resolved` omits them,
+    # which is benign because the proposal list ordering is fixed by the time
+    # resolve fires (resolve only repaints the info pane, not the list).
     return dataclasses.replace(
         lsp_item_to_proposal(resolved),
         # Preserve the immutable label the user already saw.
@@ -253,6 +256,8 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._uri = uri
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
+        self._resolve_inflight_id: int | None = None
+        self._resolved_proposals: set[int] = set()
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -353,26 +358,47 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # `do_get_info()` text.
         if not isinstance(proposal, _LspCompletionProposal):
             return
+        if id(proposal) in self._resolved_proposals:
+            return
         cap = self._server.capability("completionProvider")
         if not resolve_provider_from(cap):
             return  # server doesn't support resolve
 
+        # Mutable holder + inflight-id guard: if the user arrows highlight
+        # from A to B before A's resolve response arrives, the late response
+        # must NOT mutate `info` (which now displays B's content).
+        my_id: list[int | None] = [None]
+
         def on_resolved(msg: dict[str, Any]) -> None:
+            if self._resolve_inflight_id is None or self._resolve_inflight_id != my_id[0]:
+                return
+            self._resolve_inflight_id = None
             if msg.get("error") or msg.get("result") is None:
                 return
             merged = merge_resolved_item(proposal.lsp, msg["result"])
             proposal.lsp = merged
+            self._resolved_proposals.add(id(proposal))
             # By the time this fires, the popup may have been dismissed
-            # and `info` may be invalid. Mirror the disposer-style guard
-            # used in CompletionController.dispose().
-            with contextlib.suppress(Exception):
+            # and `info` may be invalid. Catch the realistic GtkSource
+            # failure modes and log at debug for diagnosability.
+            try:
                 widget = _make_info_label(merged)
                 info.set_widget(widget)
                 widget.show_all()  # type: ignore[attr-defined]
+            except (TypeError, AttributeError, RuntimeError) as e:
+                logger.debug("resolve popup update skipped: %r", e)
 
-        self._server._send_request(
+        if self._resolve_inflight_id is not None:
+            self._server.cancel_request(self._resolve_inflight_id)
+            self._resolve_inflight_id = None
+
+        new_id = self._server._send_request(
             "completionItem/resolve", proposal.lsp.raw_item, on_resolved
         )
+        # _send_request returns -1 if transport is None — same edge case as
+        # do_populate.
+        self._resolve_inflight_id = new_id if new_id != -1 else None
+        my_id[0] = self._resolve_inflight_id
 
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]

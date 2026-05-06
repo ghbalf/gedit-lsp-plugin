@@ -110,3 +110,10 @@ def test_merge_resolved_item_preserves_raw() -> None:
     resolved = {"label": "foo", "detail": "x"}
     merged = merge_resolved_item(base, resolved)
     assert merged.raw_item == resolved
+
+
+def test_merge_resolved_item_empty_resolved_preserves_label() -> None:
+    base = lsp_item_to_proposal({"label": "foo", "detail": "preset"})
+    merged = merge_resolved_item(base, {})
+    assert merged.label == "foo"  # label preserved from base
+    assert merged.detail is None  # resolved server payload wins (empty)
