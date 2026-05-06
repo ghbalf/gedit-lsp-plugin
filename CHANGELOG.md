@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- (entries appear here as features land)
+
+## [0.3.0] — 2026-05-06
+
+### Added
 
 - Completion proposal Details pane is now populated. Press `Alt+D` in
   the completion popup to reveal the highlighted proposal's detail
