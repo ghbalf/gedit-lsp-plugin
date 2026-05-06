@@ -27,8 +27,23 @@ def test_format_detail_only() -> None:
     assert format_proposal_text(p) == "(class)"
 
 
-def test_format_empty_returns_blank_placeholder() -> None:
+def test_format_empty_returns_empty_string() -> None:
     p = _make("foo")
-    # A single space rather than "" so the popover doesn't collapse to
-    # zero height (matches the v0.2.0 attempt's approach).
-    assert format_proposal_text(p) == " "
+    assert format_proposal_text(p) == ""
+
+
+def test_format_preserves_embedded_newlines() -> None:
+    """Pre-embedded \\n in detail or documentation is left as-is — the
+    helper joins with `\\n\\n` separators between fields, not within them."""
+    p = _make("foo", detail="line1\nline2", doc="paragraph one\n\nparagraph two")
+    assert format_proposal_text(p) == "line1\nline2\n\nparagraph one\n\nparagraph two"
+
+
+def test_format_does_not_truncate_long_documentation() -> None:
+    """The pure formatter never truncates — UI-side scrolling is the
+    controller's responsibility."""
+    long_doc = "x" * 10_000
+    p = _make("foo", doc=long_doc)
+    out = format_proposal_text(p)
+    assert long_doc in out
+    assert len(out) >= 10_000
