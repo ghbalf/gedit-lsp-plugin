@@ -42,6 +42,7 @@ from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.features.outline import OutlineController
+from gedit_lsp.features.signature_help import SignatureHelpController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
@@ -126,6 +127,7 @@ class GeditLspPlugin(
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._listener_disposers: dict[Gedit.Document, list[Callable[[], None]]] = {}
         self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
+        self._sighelp_ctrls: dict[Gedit.Document, SignatureHelpController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -194,6 +196,9 @@ class GeditLspPlugin(
         for ctrl in self._completion_ctrls.values():
             ctrl.dispose()
         self._completion_ctrls.clear()
+        for sig_ctrl in self._sighelp_ctrls.values():
+            sig_ctrl.dispose()
+        self._sighelp_ctrls.clear()
         for disposers in self._listener_disposers.values():
             for dispose in disposers:
                 dispose()
@@ -234,6 +239,9 @@ class GeditLspPlugin(
         ctrl = self._completion_ctrls.pop(doc, None)
         if ctrl is not None:
             ctrl.dispose()
+        sig_ctrl = self._sighelp_ctrls.pop(doc, None)
+        if sig_ctrl is not None:
+            sig_ctrl.dispose()
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:
@@ -342,6 +350,20 @@ class GeditLspPlugin(
                 logger.info("attached LSP completion provider for %s", path)
             else:
                 logger.info("skip completion attach: no view for doc")
+
+        # Wire LSP signatureHelp if enabled in config.
+        if "signatureHelp" in self._config.tunable("enabledFeatures"):
+            view = next(
+                (v for v in self.window.get_views() if v.get_buffer() is doc),
+                None,
+            )
+            if view is not None:
+                self._sighelp_ctrls[doc] = SignatureHelpController(
+                    view=view, buffer=doc, server=server, uri=uri,
+                )
+                logger.info("attached LSP signatureHelp controller for %s", path)
+            else:
+                logger.info("skip signatureHelp attach: no view for doc")
 
         def _request_outline() -> bool:
             def _on_outline(msg: dict[str, Any]) -> None:
