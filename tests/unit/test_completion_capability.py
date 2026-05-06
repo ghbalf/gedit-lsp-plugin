@@ -4,7 +4,6 @@ from __future__ import annotations
 from gedit_lsp.features.completion import (
     is_completion_supported,
     trigger_characters_from,
-    resolve_provider_from,
 )
 
 
@@ -32,12 +31,3 @@ def test_trigger_characters_extracts_list() -> None:
 def test_trigger_characters_missing_returns_empty() -> None:
     assert trigger_characters_from({}) == []
     assert trigger_characters_from(None) == []
-
-
-def test_resolve_provider_default_false() -> None:
-    assert resolve_provider_from({}) is False
-    assert resolve_provider_from(None) is False
-
-
-def test_resolve_provider_explicit_true() -> None:
-    assert resolve_provider_from({"resolveProvider": True}) is True

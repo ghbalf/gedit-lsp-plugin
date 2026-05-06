@@ -61,12 +61,6 @@ def trigger_characters_from(capability: dict[str, Any] | None) -> list[str]:
     return list(capability.get("triggerCharacters", []) or [])
 
 
-def resolve_provider_from(capability: dict[str, Any] | None) -> bool:
-    if not capability:
-        return False
-    return bool(capability.get("resolveProvider", False))
-
-
 def classify_trigger(
     *,
     typed_char: str | None,

@@ -8,7 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (entries appear here as features land)
+
+- LSP-driven completion via `textDocument/completion`. Wires LSP
+  completion proposals into gedit's existing completion popup
+  (`GtkSource.CompletionProvider`). Trigger characters from the server's
+  `completionProvider` capability auto-fire; `Ctrl+Space` invokes
+  manually. Off by default for any language whose server doesn't support
+  `completionProvider`. Enabled in `enabledFeatures` by default; remove
+  `"completion"` from that list to disable globally, or use
+  `serverCapabilityOverrides.<lang>.completionProvider = false` to
+  disable per-language. The completion popup's "Details" pane is not yet
+  populated — that requires a custom side-panel/popover and is deferred
+  to a follow-up.
+
+### Changed
+
+- The server's `capabilities` from the `initialize` response is now
+  retained on `LanguageServer` and exposed via
+  `LanguageServer.capability(key)`. `serverCapabilityOverrides` is
+  deep-merged on top — closes a documented contract that wasn't
+  previously implemented.
 
 ## [0.1.0-alpha.2] — 2026-05-04
 

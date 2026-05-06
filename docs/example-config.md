@@ -175,13 +175,14 @@ entirely (no didOpen, no diagnostics). `stderrBufferMaxLines` is per server
 ### Features
 
 ```json
-"enabledFeatures": ["diagnostics", "hover", "definition", "outline"]
+"enabledFeatures": ["diagnostics", "hover", "definition", "outline", "completion"]
 ```
 
-Recognised values: `diagnostics`, `hover`, `definition`, `outline`. Any
-other string is silently ignored. Removing one disables that feature
-plugin-wide; you can also disable a single feature for a single language by
-overriding the server's capability — see `serverCapabilityOverrides` below.
+Recognised values: `diagnostics`, `hover`, `definition`, `outline`,
+`completion`. Any other string is silently ignored. Removing one disables
+that feature plugin-wide; you can also disable a single feature for a
+single language by overriding the server's capability — see
+`serverCapabilityOverrides` below.
 
 ### Diagnostic visuals
 
