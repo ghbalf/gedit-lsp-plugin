@@ -30,7 +30,9 @@ def test_format_info_text_doc_only() -> None:
     assert format_info_text(_proposal(doc="The thing.")) == "The thing."
 
 
-def test_format_info_text_neither_returns_empty() -> None:
-    """Empty result lets the pane render blank — a clearer "no docs"
-    signal than synthesised placeholder text."""
-    assert format_info_text(_proposal()) == ""
+def test_format_info_text_neither_returns_placeholder() -> None:
+    """When the server gives us nothing, show a positive 'no details'
+    message rather than a blank pane (which looks like a broken plugin)."""
+    from gedit_lsp.features.completion import NO_DETAILS_PLACEHOLDER
+
+    assert format_info_text(_proposal()) == NO_DETAILS_PLACEHOLDER

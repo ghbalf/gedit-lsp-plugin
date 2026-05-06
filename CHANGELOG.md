@@ -13,10 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the completion popup to reveal the highlighted proposal's detail
   (typically a function signature) above its documentation. The pane
   is hidden by default — that's libgedit-gtksourceview's built-in
-  toggle behaviour, not a plugin choice. `completionItem/resolve` is
-  not yet wired, so docs reflect what the server returns in the
-  initial `textDocument/completion` response (some servers, e.g.
-  pylsp, only fully populate `documentation` after a resolve).
+  toggle behaviour, not a plugin choice.
+- `completionItem/resolve` is wired. When the server advertises
+  `resolveProvider: true`, highlighting a proposal fires a resolve
+  request and the Details pane repaints with the enriched payload
+  on response. Resolved proposals are cached per-popup, so re-visiting
+  a proposal doesn't re-fire. Stale responses (highlight moved before
+  the response arrived) are dropped via an inflight-id guard.
+- When the server returns no detail and no documentation for a
+  proposal, the Details pane shows `(no details)` instead of staying
+  blank — confirms the pane is wired and the server is the silent one.
 
 ## [0.2.0] — 2026-05-06
 

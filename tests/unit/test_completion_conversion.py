@@ -4,6 +4,7 @@ from __future__ import annotations
 from gedit_lsp.features.completion import (
     extract_completion_items,
     lsp_item_to_proposal,
+    merge_resolved_item,
     response_is_incomplete,
 )
 
@@ -82,3 +83,39 @@ def test_lsp_item_documentation_list_form() -> None:
     })
     assert "first paragraph" in p.documentation
     assert "second" in p.documentation
+
+
+def test_merge_resolved_item_fills_missing_fields() -> None:
+    base = lsp_item_to_proposal({"label": "foo"})
+    resolved = {"label": "foo", "detail": "(method) foo() -> int",
+                "documentation": "Foo the bar."}
+    merged = merge_resolved_item(base, resolved)
+    assert merged.detail == "(method) foo() -> int"
+    assert merged.documentation == "Foo the bar."
+    assert merged.label == "foo"  # unchanged
+
+
+def test_merge_resolved_item_resolved_payload_wins() -> None:
+    """The resolved server payload is the source of truth — overwrite even
+    if base already had a value, since the server's later, fuller response
+    is more authoritative."""
+    base = lsp_item_to_proposal({"label": "foo", "detail": "preset"})
+    resolved = {"label": "foo", "detail": "from server"}
+    merged = merge_resolved_item(base, resolved)
+    assert merged.detail == "from server"
+
+
+def test_merge_resolved_item_preserves_raw() -> None:
+    base = lsp_item_to_proposal({"label": "foo"})
+    resolved = {"label": "foo", "detail": "x"}
+    merged = merge_resolved_item(base, resolved)
+    assert merged.raw_item == resolved
+
+
+def test_merge_resolved_item_empty_resolved_preserves_label() -> None:
+    """The label is the user-visible identifier; never replace it from a
+    sparse resolved payload."""
+    base = lsp_item_to_proposal({"label": "foo", "detail": "preset"})
+    merged = merge_resolved_item(base, {})
+    assert merged.label == "foo"  # label preserved from base
+    assert merged.detail is None  # resolved server payload wins (empty)
