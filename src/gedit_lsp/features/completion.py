@@ -236,6 +236,18 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
 
         Centralised so unit tests can drive the response path without
         constructing a GTK CompletionContext.
+
+        Contract (pinned by tests):
+          - id-mismatch: early-return []. Do NOT fire the callback or
+            touch `_last_proposals` / `_last_was_incomplete` — a
+            superseded request must not perturb in-flight state.
+          - error: early-return []. Do NOT fire the callback. Leave
+            `_last_was_incomplete` untouched so a prior incomplete
+            state survives an error blip.
+          - success (including `result=None`): update both
+            `_last_was_incomplete` and `_last_proposals`, then fire
+            the callback with the parsed list (possibly empty, so
+            subscribers can clear UI).
         """
         if self._inflight_id is None or self._inflight_id != request_id:
             return []
