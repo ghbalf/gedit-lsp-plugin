@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -217,6 +218,37 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._uri = uri
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
+        self._last_proposals: list[LspProposal] = []
+        self._on_populated: Callable[[list[LspProposal]], None] | None = None
+
+    def set_populate_callback(
+        self, cb: Callable[[list[LspProposal]], None] | None,
+    ) -> None:
+        """Register (or unregister with None) a callback fired whenever
+        `do_populate` receives a non-error response. Receives the parsed
+        proposal list (may be empty)."""
+        self._on_populated = cb
+
+    def _handle_completion_response(
+        self, msg: dict[str, Any], request_id: int,
+    ) -> list[LspProposal]:
+        """Process a completion response. Returns the parsed proposal list.
+
+        Centralised so unit tests can drive the response path without
+        constructing a GTK CompletionContext.
+        """
+        if self._inflight_id is None or self._inflight_id != request_id:
+            return []
+        if msg.get("error"):
+            logger.info("completion error: %r", msg.get("error"))
+            return []
+        result = msg.get("result")
+        self._last_was_incomplete = response_is_incomplete(result)
+        proposals = extract_completion_items(result)
+        self._last_proposals = proposals
+        if self._on_populated is not None:
+            self._on_populated(proposals)
+        return proposals
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -271,18 +303,24 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         my_id: list[int | None] = [None]
 
         def on_response(msg: dict[str, Any]) -> None:
-            # Discard if we've moved past this request — a superseded request's
-            # response must NOT mutate self._last_was_incomplete or push
-            # proposals to a stale context.
-            if self._inflight_id is None or self._inflight_id != my_id[0]:
+            # Discard if we've moved past this request — a superseded
+            # request's response must NOT mutate state or push proposals
+            # to a stale context. Match the prior id-mismatch behavior
+            # (early return, no add_proposals call) before delegating.
+            request_id = my_id[0]
+            if request_id is None:
                 return
+            if self._inflight_id is None or self._inflight_id != request_id:
+                return
+            # Delegate response parsing + state mutation + callback firing
+            # to the extracted helper. The GTK-side concern — pushing
+            # into the context — stays here.
+            proposals = self._handle_completion_response(msg, request_id=request_id)
             if msg.get("error"):
-                logger.info("completion error: %r", msg.get("error"))
+                # Match prior behavior: clear stale proposals from the
+                # context on error.
                 context.add_proposals(self, [], True)  # type: ignore[attr-defined]
                 return
-            result = msg.get("result")
-            self._last_was_incomplete = response_is_incomplete(result)
-            proposals = extract_completion_items(result)
             gtk_proposals = [_LspCompletionProposal(p) for p in proposals]
             context.add_proposals(self, gtk_proposals, True)  # type: ignore[attr-defined]
 
