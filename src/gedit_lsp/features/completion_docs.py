@@ -243,9 +243,12 @@ class CompletionDocsController:
             popover = Gtk.Popover.new(self._view)  # type: ignore[call-arg]
             popover.set_modal(False)  # type: ignore[attr-defined]  # don't steal focus from completion popup
             popover.set_position(Gtk.PositionType.RIGHT)
+            # Force a usable size — Gtk.Popover otherwise fits to the
+            # label's natural size, which collapses around short labels
+            # and clips the placeholder text. ScrolledWindow's
+            # min-content-* hints aren't honored inside a Popover.
+            popover.set_size_request(420, 160)  # type: ignore[attr-defined]
             scrolled = Gtk.ScrolledWindow()
-            scrolled.set_min_content_height(120)
-            scrolled.set_min_content_width(360)
             scrolled.set_max_content_height(360)
             scrolled.add(self._ensure_label())  # type: ignore[attr-defined]
             popover.add(scrolled)  # type: ignore[attr-defined]
