@@ -75,7 +75,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
-from gi.repository import Gtk, GtkSource  # noqa: E402
+from gi.repository import Gdk, Gtk, GtkSource  # noqa: E402
 
 if TYPE_CHECKING:
     from gedit_lsp.features.completion import LspCompletionProvider
@@ -171,6 +171,7 @@ class CompletionDocsController:
         scroll_step: Gtk.ScrollStep,
         num: int,
     ) -> None:
+        logger.info("move-cursor signal: scroll_step=%r num=%d", scroll_step, num)
         step = _scroll_step_to_navstep(scroll_step)
         if step is None:
             return  # unsupported step — ignore
@@ -187,6 +188,7 @@ class CompletionDocsController:
         scroll_step: Gtk.ScrollStep,
         num: int,
     ) -> None:
+        logger.info("move-page signal: scroll_step=%r num=%d", scroll_step, num)
         # libgedit also fires move-page for PageUp/PageDown; treat as PAGE
         # regardless of the scroll_step value.
         page_size = self._page_size()
@@ -260,26 +262,29 @@ class CompletionDocsController:
         return self._popover
 
     def _show_popover(self) -> None:
-        # NOTE: The completion popup is also anchored at the cursor and extends
-        # right/down. PositionType.RIGHT places our popover to the right of the
-        # cursor's column, which on small windows may overlap the popup. Manual
-        # smoke (Task 9) verifies this; if it fails we revisit anchor strategy
-        # (e.g. anchor to the view's right edge instead).
+        # Anchor to the view's RIGHT edge, vertically aligned with the
+        # cursor. Position LEFT means the popover sits to the LEFT of the
+        # right-edge anchor — i.e. on the right side of the editor, well
+        # clear of the completion popup (which sits near the cursor on
+        # the left side of typical text).
         popover = self._ensure_popover()
+        popover.set_position(Gtk.PositionType.LEFT)
         if not self._anchor_set:
-            # Anchor once per show session at the cursor's current rect.
-            # Subsequent refreshes (highlight changes, populate updates) should
-            # not jitter the popover — the cursor may have advanced as the user
-            # typed, but the popup itself is still anchored to the original
-            # trigger position.
+            # Anchor at the view's right edge, vertically aligned with
+            # the cursor. The completion popup sits near the cursor on
+            # the left; placing the popover at the right edge keeps them
+            # apart visually. Anchor once per show session — subsequent
+            # refreshes shouldn't jitter the popover.
             buf = self._view.get_buffer()
             cursor_iter = buf.get_iter_at_mark(buf.get_insert())
-            rect = self._view.get_iter_location(cursor_iter)
-            bx, by = self._view.buffer_to_window_coords(
-                Gtk.TextWindowType.WIDGET, rect.x, rect.y + rect.height,
+            cursor_rect = self._view.get_iter_location(cursor_iter)
+            _, by = self._view.buffer_to_window_coords(
+                Gtk.TextWindowType.WIDGET, 0, cursor_rect.y,
             )
-            rect.x = bx
-            rect.y = by
+            view_alloc = self._view.get_allocation()
+            rect = Gdk.Rectangle()
+            rect.x = view_alloc.width - 1
+            rect.y = max(0, by)
             rect.width = 1
             rect.height = 1
             popover.set_pointing_to(rect)
