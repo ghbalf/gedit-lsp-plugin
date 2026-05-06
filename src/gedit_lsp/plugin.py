@@ -38,6 +38,7 @@ from gi.repository import (  # type: ignore[attr-defined]
 from gedit_lsp.bridge import DocumentBridge, GLibClock
 from gedit_lsp.config import Config
 from gedit_lsp.features.completion import CompletionController
+from gedit_lsp.features.completion_docs import CompletionDocsController
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.hover import HoverController
@@ -126,6 +127,7 @@ class GeditLspPlugin(
         self._diagnostics_ctrls: dict[Gedit.Document, DiagnosticsController] = {}
         self._listener_disposers: dict[Gedit.Document, list[Callable[[], None]]] = {}
         self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
+        self._docs_ctrls: dict[Gedit.Document, CompletionDocsController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -194,6 +196,9 @@ class GeditLspPlugin(
         for ctrl in self._completion_ctrls.values():
             ctrl.dispose()
         self._completion_ctrls.clear()
+        for docs_ctrl in self._docs_ctrls.values():
+            docs_ctrl.dispose()
+        self._docs_ctrls.clear()
         for disposers in self._listener_disposers.values():
             for dispose in disposers:
                 dispose()
@@ -231,6 +236,9 @@ class GeditLspPlugin(
         self._diagnostics_ctrls.pop(doc, None)
         for dispose in self._listener_disposers.pop(doc, []):
             dispose()
+        docs_ctrl = self._docs_ctrls.pop(doc, None)
+        if docs_ctrl is not None:
+            docs_ctrl.dispose()
         ctrl = self._completion_ctrls.pop(doc, None)
         if ctrl is not None:
             ctrl.dispose()
@@ -342,6 +350,22 @@ class GeditLspPlugin(
                 logger.info("attached LSP completion provider for %s", path)
             else:
                 logger.info("skip completion attach: no view for doc")
+
+            # Wire docs popover (gated by tunable; default True if key absent
+            # since Task 6 of the docs-popover plan is what registers the
+            # default — we still wire the construction here).
+            try:
+                docs_enabled = bool(
+                    self._config.tunable("showCompletionDocsPopover")
+                )
+            except KeyError:
+                docs_enabled = True
+            if docs_enabled:
+                completion_ctrl = self._completion_ctrls.get(doc)
+                if completion_ctrl is not None and view is not None:
+                    self._docs_ctrls[doc] = CompletionDocsController(
+                        view=view, provider=completion_ctrl.provider,
+                    )
 
         def _request_outline() -> bool:
             def _on_outline(msg: dict[str, Any]) -> None:

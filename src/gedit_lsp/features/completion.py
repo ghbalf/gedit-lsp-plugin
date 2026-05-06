@@ -392,6 +392,10 @@ class CompletionController:
         if completion is not None:
             completion.add_provider(self._provider)
 
+    @property
+    def provider(self) -> LspCompletionProvider:
+        return self._provider
+
     def dispose(self) -> None:
         completion = self._view.get_completion()  # type: ignore[attr-defined]
         if completion is not None:
