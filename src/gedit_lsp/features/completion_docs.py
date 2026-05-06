@@ -39,3 +39,22 @@ def advance_index(
     if new_index >= list_len:
         return list_len - 1
     return new_index
+
+
+from gedit_lsp.features.completion import LspProposal  # noqa: E402  (after enum)
+
+
+def format_proposal_text(proposal: LspProposal) -> str:
+    """Format detail + documentation for the docs popover.
+
+    Detail (e.g. function signature) on the first line, documentation
+    below. Markdown is stringified upstream — no rich rendering for v1.
+    Returns " " (single space) when both fields are empty so the popover
+    doesn't collapse to a zero-height row.
+    """
+    parts: list[str] = []
+    if proposal.detail:
+        parts.append(proposal.detail)
+    if proposal.documentation:
+        parts.append(proposal.documentation)
+    return "\n\n".join(parts) or " "
