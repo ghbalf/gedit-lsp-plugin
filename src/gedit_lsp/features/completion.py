@@ -61,12 +61,6 @@ def trigger_characters_from(capability: dict[str, Any] | None) -> list[str]:
     return list(capability.get("triggerCharacters", []) or [])
 
 
-def resolve_provider_from(capability: dict[str, Any] | None) -> bool:
-    if not capability:
-        return False
-    return bool(capability.get("resolveProvider", False))
-
-
 def classify_trigger(
     *,
     typed_char: str | None,
@@ -135,20 +129,6 @@ def lsp_item_to_proposal(item: dict[str, Any]) -> LspProposal:
     )
 
 
-def merge_resolved_item(base: LspProposal, resolved: dict[str, Any]) -> LspProposal:
-    """Replace `base` fields with values from a `completionItem/resolve`
-    response. The resolved server payload wins — we trust later, more
-    detailed information over the initial item."""
-    # Note: sortText/filterText fall back to `label` if `resolved` omits them,
-    # which is benign because the proposal list ordering is fixed by the time
-    # resolve fires (resolve only repaints the info pane, not the list).
-    return dataclasses.replace(
-        lsp_item_to_proposal(resolved),
-        # Preserve the immutable label the user already saw.
-        label=base.label,
-    )
-
-
 def extract_completion_items(response: Any) -> list[LspProposal]:
     """Normalise both LSP response shapes (`CompletionItem[]` and
     `CompletionList`) and return a list of LspProposal."""
@@ -214,22 +194,6 @@ class _LspCompletionProposal(GObject.Object, GtkSource.CompletionProposal):
         return self.lsp.documentation
 
 
-def _format_info_text(proposal: LspProposal) -> str:
-    """Format detail + documentation for the info popup label.
-
-    Detail (e.g. function signature) on the first line, documentation below.
-    Markdown is stringified upstream — no rich rendering for v1. Returns a
-    single space (not "") when both fields are empty so the popup doesn't
-    collapse to a zero-height row.
-    """
-    parts: list[str] = []
-    if proposal.detail:
-        parts.append(proposal.detail)
-    if proposal.documentation:
-        parts.append(proposal.documentation)
-    return "\n\n".join(parts) or " "
-
-
 class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
     """GtkSource.CompletionProvider that fires LSP completion requests.
 
@@ -253,12 +217,6 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._uri = uri
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
-        self._resolve_inflight_id: int | None = None
-        self._resolved_proposals: set[int] = set()
-        # Single persistent Label used as the info-pane widget. We mutate
-        # its text in place rather than swapping widgets — libgedit's
-        # CompletionInfo fork doesn't expose set_widget().
-        self._info_label: Gtk.Label | None = None
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -346,90 +304,6 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # which inserts proposal.get_text() at the iter. Snippet support
         # is a separate plan (out of scope for v0.2.0).
         return False
-
-    def _ensure_info_label(self) -> Gtk.Label:
-        if self._info_label is None:
-            label = Gtk.Label.new("")
-            label.set_xalign(0)
-            label.set_line_wrap(True)  # type: ignore[attr-defined]
-            label.set_selectable(True)
-            self._info_label = label
-        return self._info_label
-
-    def do_get_info_widget(
-        self,
-        proposal: GtkSource.CompletionProposal,
-    ) -> Gtk.Widget | None:
-        # GtkSource calls this to obtain the widget shown in the info pane.
-        # We return the cached label; do_update_info refreshes its text.
-        if not isinstance(proposal, _LspCompletionProposal):
-            return None
-        label = self._ensure_info_label()
-        # If the popup re-uses the widget across calls, unparent first to
-        # avoid Gtk.Bin's "widget already has parent" warning.
-        parent = label.get_parent()
-        if parent is not None:
-            try:
-                parent.remove(label)  # type: ignore[attr-defined]
-            except (TypeError, AttributeError, RuntimeError) as e:
-                logger.info("info widget unparent skipped: %r", e)
-        label.set_text(_format_info_text(proposal.lsp))
-        return label
-
-    def do_update_info(
-        self,
-        proposal: GtkSource.CompletionProposal,
-        info: Any,  # GtkSource.CompletionInfo — only in GtkSource 3.x, not in 5.x stubs
-    ) -> None:
-        # Fired by GtkSource whenever the info popup needs fresh content for
-        # `proposal`. We update the cached label immediately with the current
-        # (possibly unresolved) text, then fire `completionItem/resolve` (if
-        # the server advertises it) and refresh the label on response.
-        del info  # unused — libgedit's CompletionInfo doesn't expose set_widget
-        if not isinstance(proposal, _LspCompletionProposal):
-            return
-        label = self._ensure_info_label()
-        label.set_text(_format_info_text(proposal.lsp))
-
-        if id(proposal) in self._resolved_proposals:
-            return
-        cap = self._server.capability("completionProvider")
-        if not resolve_provider_from(cap):
-            return  # server doesn't support resolve
-
-        # Mutable holder + inflight-id guard: if the user arrows highlight
-        # from A to B before A's resolve response arrives, the late response
-        # must NOT overwrite the label (which now displays B's content).
-        my_id: list[int | None] = [None]
-
-        def on_resolved(msg: dict[str, Any]) -> None:
-            if self._resolve_inflight_id is None or self._resolve_inflight_id != my_id[0]:
-                return
-            self._resolve_inflight_id = None
-            if msg.get("error") or msg.get("result") is None:
-                return
-            merged = merge_resolved_item(proposal.lsp, msg["result"])
-            proposal.lsp = merged
-            self._resolved_proposals.add(id(proposal))
-            # By the time this fires the popup may have been dismissed and
-            # the label freed. Log at info — silent failures here masked the
-            # original wiring bug for an entire phase of work.
-            try:
-                label.set_text(_format_info_text(merged))
-            except (TypeError, AttributeError, RuntimeError) as e:
-                logger.info("resolve label update skipped: %r", e)
-
-        if self._resolve_inflight_id is not None:
-            self._server.cancel_request(self._resolve_inflight_id)
-            self._resolve_inflight_id = None
-
-        new_id = self._server._send_request(
-            "completionItem/resolve", proposal.lsp.raw_item, on_resolved
-        )
-        # _send_request returns -1 if transport is None — same edge case as
-        # do_populate.
-        self._resolve_inflight_id = new_id if new_id != -1 else None
-        my_id[0] = self._resolve_inflight_id
 
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]

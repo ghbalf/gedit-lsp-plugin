@@ -13,12 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completion proposals into gedit's existing completion popup
   (`GtkSource.CompletionProvider`). Trigger characters from the server's
   `completionProvider` capability auto-fire; `Ctrl+Space` invokes
-  manually. Supports `completionItem/resolve` for richer info popups when
-  the server advertises it. Off by default for any language whose server
-  doesn't support `completionProvider`. Enabled in `enabledFeatures` by
-  default; remove `"completion"` from that list to disable globally, or
-  use `serverCapabilityOverrides.<lang>.completionProvider = false` to
-  disable per-language.
+  manually. Off by default for any language whose server doesn't support
+  `completionProvider`. Enabled in `enabledFeatures` by default; remove
+  `"completion"` from that list to disable globally, or use
+  `serverCapabilityOverrides.<lang>.completionProvider = false` to
+  disable per-language. The completion popup's "Details" pane is not yet
+  populated — that requires a custom side-panel/popover and is deferred
+  to a follow-up.
 
 ### Changed
 
