@@ -56,6 +56,7 @@
 
     "maxFileSizeBytes":          5242880,
     "showStatusbarIndicator":    true,
+    "showCompletionDocsPopover": true,
     "stderrBufferMaxLines":      1000,
 
     "enabledFeatures": ["diagnostics", "hover", "definition", "outline", "completion"],

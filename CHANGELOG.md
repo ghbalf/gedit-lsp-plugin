@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- LSP completion docs popover. While the completion popup is open, a
+  non-modal `Gtk.Popover` next to the editor displays the highlighted
+  proposal's `detail` + `documentation` (parsed from the initial
+  `textDocument/completion` response). Replaces the libgedit Details
+  pane, which our completion provider can't populate. Toggle with the
+  new `showCompletionDocsPopover` tunable (default `true`).
+  `completionItem/resolve` enrichment is a separate follow-up.
+
 - LSP-driven completion via `textDocument/completion`. Wires LSP
   completion proposals into gedit's existing completion popup
   (`GtkSource.CompletionProvider`). Trigger characters from the server's

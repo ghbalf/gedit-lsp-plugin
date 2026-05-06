@@ -351,16 +351,7 @@ class GeditLspPlugin(
             else:
                 logger.info("skip completion attach: no view for doc")
 
-            # Wire docs popover (gated by tunable; default True if key absent
-            # since Task 6 of the docs-popover plan is what registers the
-            # default — we still wire the construction here).
-            try:
-                docs_enabled = bool(
-                    self._config.tunable("showCompletionDocsPopover")
-                )
-            except KeyError:
-                docs_enabled = True
-            if docs_enabled:
+            if self._config.tunable("showCompletionDocsPopover"):
                 completion_ctrl = self._completion_ctrls.get(doc)
                 if completion_ctrl is not None and view is not None:
                     self._docs_ctrls[doc] = CompletionDocsController(

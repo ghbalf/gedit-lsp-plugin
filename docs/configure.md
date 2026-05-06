@@ -107,6 +107,7 @@ Per-key replacement; missing keys keep their default.
 | `logLspTraffic` | bool | `false` | Whether to write all wire messages to a separate traffic log |
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
+| `showCompletionDocsPopover` | bool | `true` | Show a side popover with detail+documentation for the highlighted completion proposal |
 | `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
 | `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion"]` | Which features run |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |

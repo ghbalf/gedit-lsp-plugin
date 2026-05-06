@@ -52,6 +52,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "logLspTraffic": False,
     "maxFileSizeBytes": 5_242_880,
     "showStatusbarIndicator": True,
+    "showCompletionDocsPopover": True,
     "stderrBufferMaxLines": 1000,
     "enabledFeatures": ["diagnostics", "hover", "definition", "outline", "completion"],
     "severityIcons": {

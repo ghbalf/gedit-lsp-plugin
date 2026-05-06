@@ -172,6 +172,10 @@ reports, but the file grows fast under heavy editing. Logs live under
 entirely (no didOpen, no diagnostics). `stderrBufferMaxLines` is per server
 — how many recent stderr lines the **Show Server Logs…** dialog can show.
 
+`showCompletionDocsPopover` toggles the side popover that mirrors the
+highlighted completion proposal's `detail` + `documentation`. Workaround
+for libgedit's broken built-in Details pane.
+
 ### Features
 
 ```json
