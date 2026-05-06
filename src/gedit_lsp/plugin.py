@@ -360,6 +360,7 @@ class GeditLspPlugin(
             if view is not None:
                 self._sighelp_ctrls[doc] = SignatureHelpController(
                     view=view, buffer=doc, server=server, uri=uri,
+                    flush_pending_change=bridge.flush_pending_change,
                 )
                 logger.info("attached LSP signatureHelp controller for %s", path)
             else:

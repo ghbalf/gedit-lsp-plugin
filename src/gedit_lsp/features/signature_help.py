@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -217,17 +218,20 @@ class SignatureHelpController:
         buffer: GtkSource.Buffer,
         server: LanguageServer,
         uri: str,
+        flush_pending_change: Callable[[], None],
     ) -> None:
         self._view = view
         self._buffer = buffer
         self._server = server
         self._uri = uri
+        self._flush_pending_change = flush_pending_change
         self._popover: Gtk.Popover | None = None
         self._sig_label: Gtk.Label | None = None
         self._doc_label: Gtk.Label | None = None
         self._inflight_id: int | None = None
         self._buffer_handler_ids: list[int] = []
         self._view_handler_ids: list[int] = []
+        self._logged_first_insert = False
 
         self._buffer_handler_ids.append(
             buffer.connect_after("insert-text", self._on_insert_text),
@@ -237,6 +241,10 @@ class SignatureHelpController:
         )
         self._view_handler_ids.append(
             view.connect("key-press-event", self._on_key_press),
+        )
+        logger.info(
+            "signatureHelp controller wired uri=%s; cap_at_attach=%r",
+            uri, server.capability("signatureHelpProvider"),
         )
 
     def dispose(self) -> None:
@@ -260,6 +268,12 @@ class SignatureHelpController:
         _length: int,
     ) -> None:
         cap = self._server.capability("signatureHelpProvider")
+        if not self._logged_first_insert:
+            self._logged_first_insert = True
+            logger.info(
+                "signatureHelp: first insert-text fired; text=%r cap=%r",
+                text, cap,
+            )
         if not is_signature_help_supported(cap):
             return
         triggers = signature_trigger_chars(cap)
@@ -275,6 +289,10 @@ class SignatureHelpController:
             # if it tracks position-based.
             pass
 
+        logger.info(
+            "signatureHelp: firing request text=%r is_trigger=%s visible=%s triggers=%r",
+            text, is_trigger, visible, triggers,
+        )
         self._fire_request(
             trigger_char=text if is_trigger else None,
             is_retrigger=visible,
@@ -301,6 +319,10 @@ class SignatureHelpController:
     # --- request / response ---
 
     def _fire_request(self, *, trigger_char: str | None, is_retrigger: bool) -> None:
+        # Flush any debounced didChange so the server sees the just-typed char
+        # before answering "what's at this position?". Otherwise pylsp etc.
+        # consult their stale in-memory copy and return empty signatures.
+        self._flush_pending_change()
         cursor = self._buffer.get_iter_at_mark(self._buffer.get_insert())
         line, character = text_iter_to_utf16(cursor)
         params = build_signature_help_params(
@@ -319,12 +341,17 @@ class SignatureHelpController:
 
         def on_response(msg: dict[str, Any]) -> None:
             if self._inflight_id is None or self._inflight_id != my_id[0]:
+                logger.info("signatureHelp: stale response dropped (id mismatch)")
                 return
             self._inflight_id = None
             if msg.get("error"):
                 logger.info("signatureHelp error: %r", msg.get("error"))
                 return
-            parsed = parse_signature_help(msg.get("result"))
+            result = msg.get("result")
+            parsed = parse_signature_help(result)
+            logger.info(
+                "signatureHelp response: result=%r parsed=%r", result, parsed,
+            )
             if parsed is None:
                 self._popdown()
                 return
