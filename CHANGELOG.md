@@ -8,7 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (entries appear here as features land)
+
+- Completion proposal Details pane is now populated. Press `Alt+D` in
+  the completion popup to reveal the highlighted proposal's detail
+  (typically a function signature) above its documentation. The pane
+  is hidden by default — that's libgedit-gtksourceview's built-in
+  toggle behaviour, not a plugin choice. `completionItem/resolve` is
+  not yet wired, so docs reflect what the server returns in the
+  initial `textDocument/completion` response (some servers, e.g.
+  pylsp, only fully populate `documentation` after a resolve).
 
 ## [0.2.0] — 2026-05-06
 

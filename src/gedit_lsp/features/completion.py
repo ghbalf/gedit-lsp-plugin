@@ -148,6 +148,22 @@ def response_is_incomplete(response: Any) -> bool:
     return False
 
 
+def format_info_text(proposal: LspProposal) -> str:
+    """Format detail + documentation for the completion Details pane.
+
+    Detail (typically a function signature) on top, documentation below,
+    separated by a blank line. Empty fields are skipped; returns "" when
+    both are empty so the pane renders blank — a clearer signal of "no
+    docs available" than synthesising placeholder text.
+    """
+    parts: list[str] = []
+    if proposal.detail:
+        parts.append(proposal.detail)
+    if proposal.documentation:
+        parts.append(proposal.documentation)
+    return "\n\n".join(parts)
+
+
 def matched_trigger_suffix(text_before_cursor: str, trigger_chars: list[str]) -> str | None:
     """Return the longest entry from `trigger_chars` that ends `text_before_cursor`, or None.
 
@@ -217,6 +233,12 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._uri = uri
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
+        # Persistent widgets for the Details pane. libgedit-gtksourceview's
+        # CompletionInfo lacks set_widget(), so we mutate the cached label
+        # in place rather than swapping widgets. The window is hidden by
+        # default — user reveals it with the popup's Details toggle (Alt+D).
+        self._info_label: Gtk.Label | None = None
+        self._info_widget: Gtk.Widget | None = None
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -304,6 +326,51 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # which inserts proposal.get_text() at the iter. Snippet support
         # is a separate plan (out of scope for v0.2.0).
         return False
+
+    def _ensure_info_widget(self) -> Gtk.Widget:
+        if self._info_widget is None:
+            label = Gtk.Label.new("")
+            label.set_xalign(0)
+            label.set_yalign(0)
+            label.set_line_wrap(True)  # type: ignore[attr-defined]
+            label.set_selectable(True)
+            sw = Gtk.ScrolledWindow()
+            sw.add(label)  # type: ignore[attr-defined]
+            sw.set_size_request(420, 220)
+            sw.show_all()  # type: ignore[attr-defined]
+            self._info_label = label
+            self._info_widget = sw
+        return self._info_widget
+
+    def do_get_info_widget(
+        self, proposal: GtkSource.CompletionProposal,
+    ) -> Gtk.Widget | None:
+        # libgedit-gtksourceview calls this on every selection change while
+        # the Details pane is visible (gtksourcecompletion.c:547). The pane
+        # itself is hidden by default — the user reveals it via the popup's
+        # Details toggle (Alt+D). info-level entry log makes "vfunc not
+        # called" vs "pane hidden behind toggle" empirically distinguishable.
+        logger.info("do_get_info_widget called for %r", type(proposal).__name__)
+        if not isinstance(proposal, _LspCompletionProposal):
+            return None
+        return self._ensure_info_widget()
+
+    def do_update_info(
+        self,
+        proposal: GtkSource.CompletionProposal,
+        info: Any,
+    ) -> None:
+        # `info` is the GtkSourceCompletionInfo window; libgedit's fork
+        # has no set_widget(), so the parameter is unused — the cached
+        # label, returned from do_get_info_widget, is what gets shown.
+        del info
+        logger.info("do_update_info called for %r", type(proposal).__name__)
+        if not isinstance(proposal, _LspCompletionProposal):
+            return
+        if self._info_label is None:
+            self._ensure_info_widget()
+        assert self._info_label is not None
+        self._info_label.set_text(format_info_text(proposal.lsp))
 
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]
