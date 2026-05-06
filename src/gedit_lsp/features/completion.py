@@ -214,23 +214,20 @@ class _LspCompletionProposal(GObject.Object, GtkSource.CompletionProposal):
         return self.lsp.documentation
 
 
-def _make_info_label(proposal: LspProposal) -> Gtk.Widget:
-    """Build a plain-text label for the completion info popup.
+def _format_info_text(proposal: LspProposal) -> str:
+    """Format detail + documentation for the info popup label.
 
     Detail (e.g. function signature) on the first line, documentation below.
-    Markdown is stringified upstream — no rich rendering for v1.
+    Markdown is stringified upstream — no rich rendering for v1. Returns a
+    single space (not "") when both fields are empty so the popup doesn't
+    collapse to a zero-height row.
     """
     parts: list[str] = []
     if proposal.detail:
         parts.append(proposal.detail)
     if proposal.documentation:
         parts.append(proposal.documentation)
-    text = "\n\n".join(parts)
-    label = Gtk.Label.new(text)
-    label.set_xalign(0)
-    label.set_line_wrap(True)  # type: ignore[attr-defined]
-    label.set_selectable(True)
-    return label
+    return "\n\n".join(parts) or " "
 
 
 class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
@@ -258,6 +255,10 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._inflight_id: int | None = None
         self._resolve_inflight_id: int | None = None
         self._resolved_proposals: set[int] = set()
+        # Single persistent Label used as the info-pane widget. We mutate
+        # its text in place rather than swapping widgets — libgedit's
+        # CompletionInfo fork doesn't expose set_widget().
+        self._info_label: Gtk.Label | None = None
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -346,18 +347,50 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # is a separate plan (out of scope for v0.2.0).
         return False
 
+    def _ensure_info_label(self) -> Gtk.Label:
+        if self._info_label is None:
+            label = Gtk.Label.new("")
+            label.set_xalign(0)
+            label.set_line_wrap(True)  # type: ignore[attr-defined]
+            label.set_selectable(True)
+            self._info_label = label
+        return self._info_label
+
+    def do_get_info_widget(
+        self,
+        proposal: GtkSource.CompletionProposal,
+    ) -> Gtk.Widget | None:
+        # GtkSource calls this to obtain the widget shown in the info pane.
+        # We return the cached label; do_update_info refreshes its text.
+        if not isinstance(proposal, _LspCompletionProposal):
+            return None
+        label = self._ensure_info_label()
+        # If the popup re-uses the widget across calls, unparent first to
+        # avoid Gtk.Bin's "widget already has parent" warning.
+        parent = label.get_parent()
+        if parent is not None:
+            try:
+                parent.remove(label)  # type: ignore[attr-defined]
+            except (TypeError, AttributeError, RuntimeError) as e:
+                logger.info("info widget unparent skipped: %r", e)
+        label.set_text(_format_info_text(proposal.lsp))
+        return label
+
     def do_update_info(
         self,
         proposal: GtkSource.CompletionProposal,
         info: Any,  # GtkSource.CompletionInfo — only in GtkSource 3.x, not in 5.x stubs
     ) -> None:
-        # Fired by GtkSource whenever the info popup needs fresh content
-        # for `proposal`. We fire `completionItem/resolve` (if the server
-        # advertises it) and replace the popup widget on response.
-        # All failure modes return silently — the popup falls back to
-        # `do_get_info()` text.
+        # Fired by GtkSource whenever the info popup needs fresh content for
+        # `proposal`. We update the cached label immediately with the current
+        # (possibly unresolved) text, then fire `completionItem/resolve` (if
+        # the server advertises it) and refresh the label on response.
+        del info  # unused — libgedit's CompletionInfo doesn't expose set_widget
         if not isinstance(proposal, _LspCompletionProposal):
             return
+        label = self._ensure_info_label()
+        label.set_text(_format_info_text(proposal.lsp))
+
         if id(proposal) in self._resolved_proposals:
             return
         cap = self._server.capability("completionProvider")
@@ -366,7 +399,7 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
 
         # Mutable holder + inflight-id guard: if the user arrows highlight
         # from A to B before A's resolve response arrives, the late response
-        # must NOT mutate `info` (which now displays B's content).
+        # must NOT overwrite the label (which now displays B's content).
         my_id: list[int | None] = [None]
 
         def on_resolved(msg: dict[str, Any]) -> None:
@@ -378,15 +411,13 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
             merged = merge_resolved_item(proposal.lsp, msg["result"])
             proposal.lsp = merged
             self._resolved_proposals.add(id(proposal))
-            # By the time this fires, the popup may have been dismissed
-            # and `info` may be invalid. Catch the realistic GtkSource
-            # failure modes and log at debug for diagnosability.
+            # By the time this fires the popup may have been dismissed and
+            # the label freed. Log at info — silent failures here masked the
+            # original wiring bug for an entire phase of work.
             try:
-                widget = _make_info_label(merged)
-                info.set_widget(widget)
-                widget.show_all()  # type: ignore[attr-defined]
+                label.set_text(_format_info_text(merged))
             except (TypeError, AttributeError, RuntimeError) as e:
-                logger.debug("resolve popup update skipped: %r", e)
+                logger.info("resolve label update skipped: %r", e)
 
         if self._resolve_inflight_id is not None:
             self._server.cancel_request(self._resolve_inflight_id)
