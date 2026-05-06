@@ -105,6 +105,7 @@ class CompletionDocsController:
         self._popover: Gtk.Popover | None = None
         self._label: Gtk.Label | None = None
         self._handler_ids: list[int] = []
+        self._anchor_set: bool = False
         self._completion = view.get_completion()  # type: ignore[attr-defined]
         # Hook the completion popup signals.
         if self._completion is not None:
@@ -150,6 +151,12 @@ class CompletionDocsController:
         if self._popover is not None:
             with contextlib.suppress(Exception):
                 self._popover.popdown()
+        # Clear stale state so the next _on_show doesn't render last
+        # session's proposals before _on_populated repopulates, and so
+        # the next show session re-anchors at the new cursor position.
+        self._proposals = []
+        self._index = 0
+        self._anchor_set = False
 
     def _on_move_cursor(
         self,
@@ -230,25 +237,37 @@ class CompletionDocsController:
             scrolled.set_max_content_height(360)
             scrolled.add(self._ensure_label())  # type: ignore[attr-defined]
             popover.add(scrolled)  # type: ignore[attr-defined]
-            popover.show_all()  # type: ignore[attr-defined]
+            # Don't call show_all() here — popup() shows children when
+            # invoked, and pre-showing risks a flash at (0,0) before the
+            # first set_pointing_to anchor lands.
             self._popover = popover
         return self._popover
 
     def _show_popover(self) -> None:
-        # Anchor at the cursor's screen rect so the popover sits beside
-        # the completion popup (which is anchored similarly, just below).
-        buf = self._view.get_buffer()
-        cursor_iter = buf.get_iter_at_mark(buf.get_insert())
-        rect = self._view.get_iter_location(cursor_iter)
-        bx, by = self._view.buffer_to_window_coords(
-            Gtk.TextWindowType.WIDGET, rect.x, rect.y + rect.height,
-        )
-        rect.x = bx
-        rect.y = by
-        rect.width = 1
-        rect.height = 1
+        # NOTE: The completion popup is also anchored at the cursor and extends
+        # right/down. PositionType.RIGHT places our popover to the right of the
+        # cursor's column, which on small windows may overlap the popup. Manual
+        # smoke (Task 9) verifies this; if it fails we revisit anchor strategy
+        # (e.g. anchor to the view's right edge instead).
         popover = self._ensure_popover()
-        popover.set_pointing_to(rect)
+        if not self._anchor_set:
+            # Anchor once per show session at the cursor's current rect.
+            # Subsequent refreshes (highlight changes, populate updates) should
+            # not jitter the popover — the cursor may have advanced as the user
+            # typed, but the popup itself is still anchored to the original
+            # trigger position.
+            buf = self._view.get_buffer()
+            cursor_iter = buf.get_iter_at_mark(buf.get_insert())
+            rect = self._view.get_iter_location(cursor_iter)
+            bx, by = self._view.buffer_to_window_coords(
+                Gtk.TextWindowType.WIDGET, rect.x, rect.y + rect.height,
+            )
+            rect.x = bx
+            rect.y = by
+            rect.width = 1
+            rect.height = 1
+            popover.set_pointing_to(rect)
+            self._anchor_set = True
         popover.popup()  # non-modal show
 
 
