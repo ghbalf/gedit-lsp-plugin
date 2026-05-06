@@ -119,6 +119,10 @@ class CompletionDocsController:
                 self._handler_ids.append(hid)
         # Subscribe to populate events on our provider.
         self._provider.set_populate_callback(self._on_populated)
+        logger.info(
+            "constructed: completion=%s handler_ids=%s",
+            self._completion is not None, self._handler_ids,
+        )
 
     def dispose(self) -> None:
         if self._completion is not None:
@@ -136,11 +140,13 @@ class CompletionDocsController:
     # --- callbacks ---
 
     def _on_populated(self, proposals: list[LspProposal]) -> None:
+        logger.info("populated: %d proposals", len(proposals))
         self._proposals = proposals
         self._index = 0
         self._refresh()
 
     def _on_show(self, _completion: GtkSource.Completion) -> None:
+        logger.info("popup show: %d cached proposals", len(self._proposals))
         # The popup just opened. If our provider's proposals are stale
         # (e.g. another provider populated last), don't show — wait for
         # the next _on_populated.
@@ -148,6 +154,7 @@ class CompletionDocsController:
             self._refresh(show=True)
 
     def _on_hide(self, _completion: GtkSource.Completion) -> None:
+        logger.info("popup hide")
         if self._popover is not None:
             with contextlib.suppress(Exception):
                 self._popover.popdown()
@@ -204,13 +211,18 @@ class CompletionDocsController:
     def _refresh(self, *, show: bool = False) -> None:
         if not self._proposals or self._index < 0:
             return
-        text = format_proposal_text(self._proposals[self._index])
-        if not text:
-            # No detail and no documentation — hide rather than show an empty box.
-            if self._popover is not None:
-                with contextlib.suppress(Exception):
-                    self._popover.popdown()
-            return
+        proposal = self._proposals[self._index]
+        body = format_proposal_text(proposal)
+        # Always render: label as a header (so the user sees we got a
+        # proposal even when pylsp's initial response is sparse), and a
+        # placeholder body when detail+documentation are both empty.
+        # `completionItem/resolve` enrichment (which pylsp would use to
+        # fill these fields) is a follow-up.
+        text = proposal.label + "\n\n" + (body or "(no documentation)")
+        logger.info(
+            "refresh: index=%d label=%r body_chars=%d show=%s",
+            self._index, proposal.label, len(body), show,
+        )
         label = self._ensure_label()
         label.set_text(text)
         if show or (self._popover is not None and self._popover.get_visible()):
