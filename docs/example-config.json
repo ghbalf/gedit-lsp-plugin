@@ -58,7 +58,7 @@
     "showStatusbarIndicator":    true,
     "stderrBufferMaxLines":      1000,
 
-    "enabledFeatures": ["diagnostics", "hover", "definition", "outline"],
+    "enabledFeatures": ["diagnostics", "hover", "definition", "outline", "completion"],
 
     "severityIcons": {
       "error":   "dialog-error-symbolic",
