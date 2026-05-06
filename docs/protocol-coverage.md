@@ -8,4 +8,5 @@
 | `textDocument/hover` | ✓ |
 | `textDocument/definition` | ✓ |
 | `textDocument/documentSymbol` | ✓ |
-| `textDocument/completion` (provider wired; smoke verification pending) | 🚧 |
+| `textDocument/completion` (proposals; Details pane via popup's Alt+D toggle) | ✓ |
+| `completionItem/resolve` (rich-docs enrichment) | 🚧 |

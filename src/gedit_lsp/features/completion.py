@@ -148,6 +148,51 @@ def response_is_incomplete(response: Any) -> bool:
     return False
 
 
+NO_DETAILS_PLACEHOLDER = "(no details)"
+
+
+def format_info_text(proposal: LspProposal) -> str:
+    """Format detail + documentation for the completion Details pane.
+
+    Detail (typically a function signature) on top, documentation below,
+    separated by a blank line. Empty fields are skipped; when both are
+    empty returns `NO_DETAILS_PLACEHOLDER` so the user sees a positive
+    signal that the pane is wired and the server returned nothing —
+    rather than a blank pane that looks like a broken plugin.
+    """
+    parts: list[str] = []
+    if proposal.detail:
+        parts.append(proposal.detail)
+    if proposal.documentation:
+        parts.append(proposal.documentation)
+    if not parts:
+        return NO_DETAILS_PLACEHOLDER
+    return "\n\n".join(parts)
+
+
+def resolve_provider_from(capability: dict[str, Any] | None) -> bool:
+    """Whether the server's `completionProvider` advertises resolve support."""
+    if not capability:
+        return False
+    return bool(capability.get("resolveProvider", False))
+
+
+def merge_resolved_item(base: LspProposal, resolved: dict[str, Any]) -> LspProposal:
+    """Replace `base` fields with values from a `completionItem/resolve`
+    response. The resolved server payload wins — we trust later, more
+    detailed information over the initial item.
+
+    Note: sortText/filterText fall back to `label` if `resolved` omits them,
+    which is benign because the proposal list ordering is fixed by the time
+    resolve fires (resolve only repaints the Details pane, not the list).
+    """
+    return dataclasses.replace(
+        lsp_item_to_proposal(resolved),
+        # Preserve the immutable label the user already saw.
+        label=base.label,
+    )
+
+
 def matched_trigger_suffix(text_before_cursor: str, trigger_chars: list[str]) -> str | None:
     """Return the longest entry from `trigger_chars` that ends `text_before_cursor`, or None.
 
@@ -217,6 +262,17 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         self._uri = uri
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
+        # Persistent widgets for the Details pane. libgedit-gtksourceview's
+        # CompletionInfo lacks set_widget(), so we mutate the cached label
+        # in place rather than swapping widgets. The window is hidden by
+        # default — user reveals it with the popup's Details toggle (Alt+D).
+        self._info_label: Gtk.Label | None = None
+        self._info_widget: Gtk.Widget | None = None
+        # `completionItem/resolve` state. Per-proposal cache (keyed by
+        # python id) skips re-resolving; inflight id guards stale
+        # responses from overwriting the label after the highlight moved.
+        self._resolve_inflight_id: int | None = None
+        self._resolved_proposals: set[int] = set()
 
     def do_get_name(self) -> str:
         return "LSP"
@@ -304,6 +360,92 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # which inserts proposal.get_text() at the iter. Snippet support
         # is a separate plan (out of scope for v0.2.0).
         return False
+
+    def _ensure_info_widget(self) -> Gtk.Widget:
+        if self._info_widget is None:
+            label = Gtk.Label.new("")
+            label.set_xalign(0)
+            label.set_yalign(0)
+            label.set_line_wrap(True)  # type: ignore[attr-defined]
+            label.set_selectable(True)
+            sw = Gtk.ScrolledWindow()
+            sw.add(label)  # type: ignore[attr-defined]
+            sw.set_size_request(420, 220)
+            sw.show_all()  # type: ignore[attr-defined]
+            self._info_label = label
+            self._info_widget = sw
+        return self._info_widget
+
+    def do_get_info_widget(
+        self, proposal: GtkSource.CompletionProposal,
+    ) -> Gtk.Widget | None:
+        # libgedit-gtksourceview calls this on every selection change while
+        # the Details pane is visible (gtksourcecompletion.c:547). The pane
+        # itself is hidden by default — the user reveals it via the popup's
+        # Details toggle (Alt+D). info-level entry log makes "vfunc not
+        # called" vs "pane hidden behind toggle" empirically distinguishable.
+        logger.info("do_get_info_widget called for %r", type(proposal).__name__)
+        if not isinstance(proposal, _LspCompletionProposal):
+            return None
+        return self._ensure_info_widget()
+
+    def do_update_info(
+        self,
+        proposal: GtkSource.CompletionProposal,
+        info: Any,
+    ) -> None:
+        # `info` is the GtkSourceCompletionInfo window; libgedit's fork
+        # has no set_widget(), so the parameter is unused — the cached
+        # label, returned from do_get_info_widget, is what gets shown.
+        del info
+        logger.info("do_update_info called for %r", type(proposal).__name__)
+        if not isinstance(proposal, _LspCompletionProposal):
+            return
+        if self._info_label is None:
+            self._ensure_info_widget()
+        assert self._info_label is not None
+        # Render whatever we know now (initial response data, possibly
+        # just the placeholder). Resolve, if supported and not already
+        # done, will repaint with enriched content when its response lands.
+        self._info_label.set_text(format_info_text(proposal.lsp))
+
+        if id(proposal) in self._resolved_proposals:
+            return
+        cap = self._server.capability("completionProvider")
+        if not resolve_provider_from(cap):
+            return  # server doesn't support resolve
+
+        # Mutable holder + inflight-id guard: if the user arrows highlight
+        # from A to B before A's resolve response arrives, the late response
+        # must NOT overwrite the label (which now displays B's content).
+        my_id: list[int | None] = [None]
+        label = self._info_label
+
+        def on_resolved(msg: dict[str, Any]) -> None:
+            if self._resolve_inflight_id is None or self._resolve_inflight_id != my_id[0]:
+                return
+            self._resolve_inflight_id = None
+            if msg.get("error") or msg.get("result") is None:
+                return
+            merged = merge_resolved_item(proposal.lsp, msg["result"])
+            proposal.lsp = merged
+            self._resolved_proposals.add(id(proposal))
+            try:
+                label.set_text(format_info_text(merged))
+            except (TypeError, AttributeError, RuntimeError) as e:
+                logger.info("resolve label update skipped: %r", e)
+
+        if self._resolve_inflight_id is not None:
+            self._server.cancel_request(self._resolve_inflight_id)
+            self._resolve_inflight_id = None
+
+        new_id = self._server._send_request(
+            "completionItem/resolve", proposal.lsp.raw_item, on_resolved,
+        )
+        # _send_request returns -1 if transport is None — same edge case as
+        # do_populate.
+        self._resolve_inflight_id = new_id if new_id != -1 else None
+        my_id[0] = self._resolve_inflight_id
 
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]
