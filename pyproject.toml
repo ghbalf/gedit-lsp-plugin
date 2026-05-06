@@ -1,6 +1,6 @@
 [project]
 name = "gedit-lsp"
-version = "0.1.0a2"
+version = "0.2.0"
 description = "Language Server Protocol client plugin for gedit"
 authors = [{ name = "Alfred Mickautsch", email = "alfred@mickautsch.de" }]
 license = { text = "MIT" }

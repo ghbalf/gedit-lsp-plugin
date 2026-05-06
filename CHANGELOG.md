@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- (entries appear here as features land)
+
+## [0.2.0] — 2026-05-06
+
+### Added
 
 - LSP-driven completion via `textDocument/completion`. Wires LSP
   completion proposals into gedit's existing completion popup
