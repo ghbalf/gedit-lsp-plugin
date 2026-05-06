@@ -249,7 +249,7 @@ class CompletionDocsController:
             # label's natural size, which collapses around short labels
             # and clips the placeholder text. ScrolledWindow's
             # min-content-* hints aren't honored inside a Popover.
-            popover.set_size_request(420, 160)  # type: ignore[attr-defined]
+            popover.set_size_request(420, 160)
             scrolled = Gtk.ScrolledWindow()
             scrolled.set_max_content_height(360)
             scrolled.add(self._ensure_label())  # type: ignore[attr-defined]
