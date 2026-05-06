@@ -135,6 +135,17 @@ def lsp_item_to_proposal(item: dict[str, Any]) -> LspProposal:
     )
 
 
+def merge_resolved_item(base: LspProposal, resolved: dict[str, Any]) -> LspProposal:
+    """Replace `base` fields with values from a `completionItem/resolve`
+    response. The resolved server payload wins — we trust later, more
+    detailed information over the initial item."""
+    return dataclasses.replace(
+        lsp_item_to_proposal(resolved),
+        # Preserve the immutable label the user already saw.
+        label=base.label,
+    )
+
+
 def extract_completion_items(response: Any) -> list[LspProposal]:
     """Normalise both LSP response shapes (`CompletionItem[]` and
     `CompletionList`) and return a list of LspProposal."""
@@ -198,6 +209,25 @@ class _LspCompletionProposal(GObject.Object, GtkSource.CompletionProposal):
         # Used by the info popup; we render plain text (markdown is
         # stringified upstream).
         return self.lsp.documentation
+
+
+def _make_info_label(proposal: LspProposal) -> Gtk.Widget:
+    """Build a plain-text label for the completion info popup.
+
+    Detail (e.g. function signature) on the first line, documentation below.
+    Markdown is stringified upstream — no rich rendering for v1.
+    """
+    parts: list[str] = []
+    if proposal.detail:
+        parts.append(proposal.detail)
+    if proposal.documentation:
+        parts.append(proposal.documentation)
+    text = "\n\n".join(parts)
+    label = Gtk.Label.new(text)
+    label.set_xalign(0)
+    label.set_line_wrap(True)  # type: ignore[attr-defined]
+    label.set_selectable(True)
+    return label
 
 
 class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
@@ -310,6 +340,39 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         # which inserts proposal.get_text() at the iter. Snippet support
         # is a separate plan (out of scope for v0.2.0).
         return False
+
+    def do_update_info(
+        self,
+        proposal: GtkSource.CompletionProposal,
+        info: Any,  # GtkSource.CompletionInfo — only in GtkSource 3.x, not in 5.x stubs
+    ) -> None:
+        # Fired by GtkSource whenever the info popup needs fresh content
+        # for `proposal`. We fire `completionItem/resolve` (if the server
+        # advertises it) and replace the popup widget on response.
+        # All failure modes return silently — the popup falls back to
+        # `do_get_info()` text.
+        if not isinstance(proposal, _LspCompletionProposal):
+            return
+        cap = self._server.capability("completionProvider")
+        if not resolve_provider_from(cap):
+            return  # server doesn't support resolve
+
+        def on_resolved(msg: dict[str, Any]) -> None:
+            if msg.get("error") or msg.get("result") is None:
+                return
+            merged = merge_resolved_item(proposal.lsp, msg["result"])
+            proposal.lsp = merged
+            # By the time this fires, the popup may have been dismissed
+            # and `info` may be invalid. Mirror the disposer-style guard
+            # used in CompletionController.dispose().
+            with contextlib.suppress(Exception):
+                widget = _make_info_label(merged)
+                info.set_widget(widget)
+                widget.show_all()  # type: ignore[attr-defined]
+
+        self._server._send_request(
+            "completionItem/resolve", proposal.lsp.raw_item, on_resolved
+        )
 
     def _matched_trigger_at(
         self, cursor: Gtk.TextIter, trigger_chars: list[str]
