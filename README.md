@@ -10,12 +10,26 @@ Language Server Protocol client for gedit ≥ 46. Adds diagnostics, hover,
 go-to-definition, document outline, and completion (with a Details pane
 revealed via the popup's `Alt+D` toggle).
 
-> **Status: pre-alpha — under active development. Not ready for use.**
+> Pre-1.0: APIs, config schema, and defaults may change between minor
+> versions. The plugin is otherwise usable day-to-day.
 
 ## Quick start
 
-(installation instructions filled in at v0.1.0-alpha; see `docs/install.md`
-once it exists).
+1. **Install system deps** for your distro — see [`docs/install.md`](docs/install.md)
+   (covers Debian/Ubuntu, Fedora, Arch, and the libgedit-gtksourceview
+   `GtkSource-300` namespace requirement).
+2. **Install the plugin** into `~/.local/share/gedit/plugins/`:
+
+   ```bash
+   ./install.sh   # or: make install
+   ```
+
+3. **Restart gedit**, then enable *gedit LSP* in *Preferences → Plugins*.
+4. **Configure servers** (optional — sensible defaults ship for Python via pylsp).
+   See [`docs/configure.md`](docs/configure.md) for the JSON schema and
+   per-language recipes.
+
+For LSP method coverage and known gaps, see [`docs/protocol-coverage.md`](docs/protocol-coverage.md).
 
 ## License
 
