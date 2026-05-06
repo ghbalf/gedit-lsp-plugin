@@ -8,7 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (entries appear here as features land)
+
+- LSP-driven signature help via `textDocument/signatureHelp`. As you type
+  a function call (typically `(` and `,`, depending on the server's
+  advertised `signatureHelpProvider.triggerCharacters`), a popover appears
+  above the cursor with the active signature; the active parameter is
+  bolded, and any documentation the server provides is shown beneath.
+  Dismissal is server-driven: when the server returns an empty
+  signatureHelp result (e.g. on the closing `)`), the popover hides.
+  Escape also dismisses. Off by default for any language whose server
+  doesn't advertise `signatureHelpProvider`. Enabled in `enabledFeatures`
+  by default; remove `"signatureHelp"` to disable globally.
 
 ## [0.3.0] — 2026-05-06
 

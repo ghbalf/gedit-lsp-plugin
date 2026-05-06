@@ -61,11 +61,22 @@ class DocumentBridge:
         )
 
     def on_saved(self) -> None:
-        self._flush_change_if_pending()
+        self.flush_pending_change()
         self._server.send_notification(
             "textDocument/didSave",
             {"textDocument": {"uri": self.uri}, "text": self._text},
         )
+
+    def flush_pending_change(self) -> None:
+        """Send any debounce-queued didChange synchronously, now.
+
+        Edit-triggered features (e.g. signatureHelp on `(`) call this before
+        sending their request so pylsp/clangd see the new text — otherwise
+        the server is consulting stale state and returns an empty result.
+        """
+        if self._pending_handle is not None:
+            self._clock.cancel(self._pending_handle)
+            self._flush_change()
 
     def detach(self) -> None:
         if self._pending_handle is not None:
@@ -86,12 +97,6 @@ class DocumentBridge:
                 "contentChanges": [{"text": self._text}],
             },
         )
-
-    def _flush_change_if_pending(self) -> None:
-        if self._pending_handle is not None:
-            self._clock.cancel(self._pending_handle)
-            self._flush_change()
-
 
 class GLibClock:
     """Real Clock backed by GLib.timeout_add."""
