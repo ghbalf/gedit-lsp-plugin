@@ -52,11 +52,12 @@ def build_preferences_widget(config_path: Path) -> Gtk.Widget:
     add_row("Max file size (bytes)", size_spin)
 
     enabled = tunables.get(
-        "enabledFeatures", ["diagnostics", "hover", "definition", "outline"]
+        "enabledFeatures",
+        ["diagnostics", "hover", "definition", "outline", "completion"],
     )
     feat_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     feat_checks: dict[str, Gtk.CheckButton] = {}
-    for feat in ["diagnostics", "hover", "definition", "outline"]:
+    for feat in ["diagnostics", "hover", "definition", "outline", "completion"]:
         c = Gtk.CheckButton(label=feat)
         c.set_active(feat in enabled)
         feat_box.pack_start(c, False, False, 0)  # type: ignore[attr-defined]
