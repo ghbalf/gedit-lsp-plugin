@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LSP-driven formatting via `textDocument/formatting` and
+  `textDocument/rangeFormatting`. The new `lsp-format` action
+  (default `Ctrl+Shift+I`) runs `rangeFormatting` if there's a
+  selection, `formatting` otherwise, falling back to whole-document
+  formatting if the server only advertises the full variant.
+  `FormattingOptions` (`tabSize`, `insertSpaces`) come from the active
+  view's tab/indent settings. Resulting `TextEdit[]` are applied
+  right-to-left (LSP-mandated) inside a single `begin/end_user_action`
+  so the format is one undo step. Off by default for any language whose
+  server doesn't advertise either provider. Enabled in `enabledFeatures`
+  by default; remove `"formatting"` from that list to disable globally.
+
 ### Fixed
 
 - Completion now flushes any debounced `didChange` before firing
@@ -16,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the wrong text (e.g. `os.` returned `os` and `OSError` instead
   of `os` module attributes). Same fix shape signatureHelp already
   uses.
+- Cross-file navigation paths no longer silently no-op:
+  double-clicking a row in the LSP Diagnostics panel now jumps to
+  the diagnostic's line; Goto-Definition into a different file opens
+  it (the same-active-document fast path was masking this bug); the
+  "Open Log" button in the server-crash info bar now actually opens
+  `~/.local/state/gedit-lsp/plugin.log` in a tab. The plugin had been
+  calling `Gedit.Window.create_tab_from_location`, which doesn't
+  exist in the gedit-46 typelib. The right API is the top-level
+  `Gedit.commands_load_location`. A new `gedit_lsp.navigation`
+  module wraps it with the standard three-branch logic
+  (active-doc / other-tab / not-open) and is shared across all call
+  sites.
 
 ### Added
 

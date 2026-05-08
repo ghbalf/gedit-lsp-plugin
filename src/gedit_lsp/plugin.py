@@ -40,6 +40,7 @@ from gedit_lsp.config import Config
 from gedit_lsp.features.completion import CompletionController
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
+from gedit_lsp.features.formatting import FormattingController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.features.signature_help import SignatureHelpController
@@ -129,6 +130,7 @@ class GeditLspPlugin(
         self._listener_disposers: dict[Gedit.Document, list[Callable[[], None]]] = {}
         self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
         self._sighelp_ctrls: dict[Gedit.Document, SignatureHelpController] = {}
+        self._formatting_ctrls: dict[Gedit.Document, FormattingController] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -166,6 +168,7 @@ class GeditLspPlugin(
             ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
             ("lsp-go-back", "go-back", self._on_go_back_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
+            ("lsp-format", "format", self._on_format_activate),
         ]:
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
@@ -200,6 +203,8 @@ class GeditLspPlugin(
         for sig_ctrl in self._sighelp_ctrls.values():
             sig_ctrl.dispose()
         self._sighelp_ctrls.clear()
+        # FormattingController has no GTK resources to dispose; clear the map.
+        self._formatting_ctrls.clear()
         for disposers in self._listener_disposers.values():
             for dispose in disposers:
                 dispose()
@@ -243,6 +248,7 @@ class GeditLspPlugin(
         sig_ctrl = self._sighelp_ctrls.pop(doc, None)
         if sig_ctrl is not None:
             sig_ctrl.dispose()
+        self._formatting_ctrls.pop(doc, None)
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:
@@ -369,6 +375,21 @@ class GeditLspPlugin(
                 logger.info("attached LSP signatureHelp controller for %s", path)
             else:
                 logger.info("skip signatureHelp attach: no view for doc")
+
+        # Wire LSP formatting if enabled in config.
+        if "formatting" in self._config.tunable("enabledFeatures"):
+            view = next(
+                (v for v in self.window.get_views() if v.get_buffer() is doc),
+                None,
+            )
+            if view is not None:
+                self._formatting_ctrls[doc] = FormattingController(
+                    view=view, buffer=doc, server=server, uri=uri,
+                    flush_pending_change=bridge.flush_pending_change,
+                )
+                logger.info("attached LSP formatting controller for %s", path)
+            else:
+                logger.info("skip formatting attach: no view for doc")
 
         def _request_outline() -> bool:
             def _on_outline(msg: dict[str, Any]) -> None:
@@ -512,6 +533,19 @@ class GeditLspPlugin(
         logger.info("go-back action invoked")
         self._definition_ctrl.go_back()
 
+    def _on_format_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        view = self.window.get_active_view()
+        if view is None:
+            return
+        doc = view.get_buffer()
+        ctrl = self._formatting_ctrls.get(doc)
+        if ctrl is None:
+            logger.info("format: no controller for active doc")
+            return
+        ctrl.trigger()
+
     def _on_show_server_logs_activate(
         self, _action: Gio.SimpleAction, _param: GObject.Object | None
     ) -> None:
@@ -569,7 +603,10 @@ class GeditLspPlugin(
     def _open_log(self) -> None:
         log_path = Path.home() / ".local/state/gedit-lsp/plugin.log"
         gfile = Gio.File.new_for_path(str(log_path))
-        self.window.create_tab_from_location(gfile, None, 1, 0, False, True)
+        # commands_load_location is the right top-level API; the previous
+        # `Window.create_tab_from_location` doesn't exist in the gedit-46
+        # typelib (silently no-op'd).
+        Gedit.commands_load_location(self.window, gfile, None, 1, 0)
 
     def _refresh_statusbar(self) -> None:
         view = self.window.get_active_view()

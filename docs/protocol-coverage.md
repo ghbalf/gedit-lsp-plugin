@@ -11,6 +11,8 @@
 | `textDocument/completion` (proposals; Details pane via popup's Alt+D toggle) | ✓ |
 | `completionItem/resolve` (rich-docs enrichment) | ✓ |
 | `textDocument/signatureHelp` (popover above cursor; active param bolded) | ✓ |
+| `textDocument/formatting` (Ctrl+Shift+I; whole document) | ✓ |
+| `textDocument/rangeFormatting` (Ctrl+Shift+I with selection) | ✓ |
 
 `textDocument/didChange` is auto-selected per server: if the server's
 `textDocumentSync.change` advertises `Incremental` (2), the plugin sends
