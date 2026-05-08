@@ -51,7 +51,6 @@ def test_do_populate_flushes_pending_change_before_sending_request() -> None:
     buf = GtkSource.Buffer()
     buf.set_text("os.")
     # Cursor is at end-of-buffer after set_text.
-    view = GtkSource.View.new_with_buffer(buf)
 
     call_log: list[str] = []
 
@@ -59,8 +58,11 @@ def test_do_populate_flushes_pending_change_before_sending_request() -> None:
         # Capture how many requests had been sent at the moment of flush.
         call_log.append(f"flush@{len(server.requests)}")
 
+    # `view` is stored on the provider but `do_populate` never reads it;
+    # constructing a real GtkSource.View needs a DISPLAY (CI is headless),
+    # so a MagicMock satisfies the attribute assignment without GTK init.
     provider = LspCompletionProvider(
-        view=view,
+        view=MagicMock(),
         buffer=buf,
         server=server,
         uri="file:///x.py",
