@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Incremental document sync (`TextDocumentSyncKind.Incremental`).
+  `textDocument/didChange` now sends per-edit `range` + `text` events
+  instead of resubmitting the whole document on every keystroke when
+  the server advertises Incremental sync. Plugin auto-selects per server
+  from the `textDocumentSync` capability — Full-sync servers and servers
+  that omit the capability keep the previous full-text behaviour.
+  Buffer-edit positions are captured pre-edit (`insert-text` /
+  `delete-range` default-priority handlers) and converted to UTF-16 LSP
+  positions, matching how completion/hover already encode locations.
 - LSP-driven signature help via `textDocument/signatureHelp`. As you type
   a function call (typically `(` and `,`, depending on the server's
   advertised `signatureHelpProvider.triggerCharacters`), a popover appears
