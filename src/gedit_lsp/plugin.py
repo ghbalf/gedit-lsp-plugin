@@ -35,7 +35,7 @@ from gi.repository import (  # type: ignore[attr-defined]
     PeasGtk,
 )
 
-from gedit_lsp.bridge import DocumentBridge, GLibClock
+from gedit_lsp.bridge import DocumentBridge, GLibClock, SyncKind, parse_sync_kind
 from gedit_lsp.config import Config
 from gedit_lsp.features.completion import CompletionController
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
@@ -52,6 +52,7 @@ from gedit_lsp.ui import popup_menu, server_logs
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
+from gedit_lsp.utf16 import text_iter_to_utf16
 
 
 def _config_path() -> Path:
@@ -291,6 +292,7 @@ class GeditLspPlugin(
         uri = gfile.get_uri()
         server.attach_buffer(uri)
         text = doc.get_text(doc.get_start_iter(), doc.get_end_iter(), False)
+        sync_kind = parse_sync_kind(server.capability("textDocumentSync"))
         bridge = DocumentBridge(
             uri=uri,
             language_id=lang_id,
@@ -298,6 +300,7 @@ class GeditLspPlugin(
             server=server,
             clock=self._clock,
             debounce_ms=self._config.tunable("changeDebounceMs"),
+            sync_kind=sync_kind,
         )
         bridge.attach()
         self._bridges[doc] = bridge
@@ -346,6 +349,7 @@ class GeditLspPlugin(
             if view is not None:
                 self._completion_ctrls[doc] = CompletionController(
                     view=view, buffer=doc, server=server, uri=uri,
+                    flush_pending_change=bridge.flush_pending_change,
                 )
                 logger.info("attached LSP completion provider for %s", path)
             else:
@@ -380,11 +384,65 @@ class GeditLspPlugin(
 
         GLib.timeout_add(self._config.tunable("outlineInitialDelayMs"), _request_outline)
 
+        # Incremental sync: capture pre-edit (line, char_utf16) from the
+        # default-priority insert-text/delete-range handlers (these fire
+        # *before* GTK applies the edit, so the iters are pre-edit), then
+        # refresh the bridge's full-text mirror in the coalesced `changed`
+        # signal that fires after each edit. Bridge falls back to Full-sync
+        # if sync_kind != INCREMENTAL.
         self._handlers.append(
-            (doc, doc.connect("changed", lambda d: self._on_doc_changed(d)))
+            (doc, doc.connect("insert-text", self._on_buffer_insert_text))
+        )
+        self._handlers.append(
+            (doc, doc.connect("delete-range", self._on_buffer_delete_range))
+        )
+        self._handlers.append(
+            (doc, doc.connect_after("changed", self._on_doc_changed))
         )
         self._handlers.append(
             (doc, doc.connect("saved", lambda d: self._on_doc_saved(d)))
+        )
+
+    def _on_buffer_insert_text(
+        self,
+        buf: Gtk.TextBuffer,
+        location: Gtk.TextIter,
+        text: str,
+        _length: int,
+    ) -> None:
+        bridge = self._bridges.get(buf)
+        if bridge is None or bridge.sync_kind is not SyncKind.INCREMENTAL:
+            return
+        line, char = text_iter_to_utf16(location)
+        bridge.on_change_event(
+            {
+                "range": {
+                    "start": {"line": line, "character": char},
+                    "end":   {"line": line, "character": char},
+                },
+                "text": text,
+            }
+        )
+
+    def _on_buffer_delete_range(
+        self,
+        buf: Gtk.TextBuffer,
+        start: Gtk.TextIter,
+        end: Gtk.TextIter,
+    ) -> None:
+        bridge = self._bridges.get(buf)
+        if bridge is None or bridge.sync_kind is not SyncKind.INCREMENTAL:
+            return
+        s_line, s_char = text_iter_to_utf16(start)
+        e_line, e_char = text_iter_to_utf16(end)
+        bridge.on_change_event(
+            {
+                "range": {
+                    "start": {"line": s_line, "character": s_char},
+                    "end":   {"line": e_line, "character": e_char},
+                },
+                "text": "",
+            }
         )
 
     def _on_doc_changed(self, doc: Gedit.Document) -> None:
@@ -392,7 +450,10 @@ class GeditLspPlugin(
         if bridge is None:
             return
         text = doc.get_text(doc.get_start_iter(), doc.get_end_iter(), False)
-        bridge.on_changed(text)
+        if bridge.sync_kind is SyncKind.INCREMENTAL:
+            bridge.refresh_text(text)
+        else:
+            bridge.on_changed(text)
 
     def _on_doc_saved(self, doc: Gedit.Document) -> None:
         bridge = self._bridges.get(doc)
@@ -477,6 +538,8 @@ class GeditLspPlugin(
         doc: Gedit.Document,
         new_state: ServerState,
     ) -> None:
+        if new_state == ServerState.READY:
+            bridge.sync_kind = parse_sync_kind(server.capability("textDocumentSync"))
         if new_state != ServerState.CIRCUIT_OPEN:
             return
         gfile = doc.get_file().get_location()

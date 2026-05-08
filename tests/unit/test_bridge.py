@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gedit_lsp.bridge import DocumentBridge
+from gedit_lsp.bridge import DocumentBridge, SyncKind
 
 
 class FakeServer:
@@ -139,3 +139,131 @@ def test_pending_change_flushed_on_save() -> None:
     bridge.on_saved()
     methods = [s["method"] for s in server.sent]
     assert methods == ["textDocument/didChange", "textDocument/didSave"]
+
+
+# --- Incremental sync (TextDocumentSyncKind.Incremental) -----------------
+
+def _insert_event(line: int, ch: int, text: str) -> dict[str, Any]:
+    return {
+        "range": {"start": {"line": line, "character": ch},
+                  "end":   {"line": line, "character": ch}},
+        "text": text,
+    }
+
+
+def test_incremental_sends_event_list_not_full_text() -> None:
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="ab",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_change_event(_insert_event(0, 2, "c"))
+    bridge.refresh_text("abc")
+    clock.advance(150)
+    assert len(server.sent) == 1
+    p = server.sent[0]["params"]
+    assert p["contentChanges"] == [_insert_event(0, 2, "c")]
+    assert p["textDocument"]["version"] == 2
+
+
+def test_incremental_coalesces_events_within_debounce() -> None:
+    """Multiple events inside the debounce window batch into one didChange,
+    preserving event order — the server applies them sequentially."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_change_event(_insert_event(0, 0, "a"))
+    bridge.on_change_event(_insert_event(0, 1, "b"))
+    bridge.on_change_event(_insert_event(0, 2, "c"))
+    bridge.refresh_text("abc")
+    clock.advance(150)
+    assert len(server.sent) == 1
+    changes = server.sent[0]["params"]["contentChanges"]
+    assert [c["text"] for c in changes] == ["a", "b", "c"]
+
+
+def test_incremental_clears_buffer_after_flush() -> None:
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_change_event(_insert_event(0, 0, "a"))
+    clock.advance(150)
+    bridge.on_change_event(_insert_event(0, 1, "b"))
+    clock.advance(150)
+    assert len(server.sent) == 2
+    assert server.sent[0]["params"]["contentChanges"] == [_insert_event(0, 0, "a")]
+    assert server.sent[1]["params"]["contentChanges"] == [_insert_event(0, 1, "b")]
+
+
+def test_incremental_flush_pending_change_sends_synchronously() -> None:
+    """Edit-triggered features (signatureHelp on `(`) must see the events
+    flushed before they fire their request."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_change_event(_insert_event(0, 0, "("))
+    bridge.flush_pending_change()
+    assert len(server.sent) == 1
+    assert server.sent[0]["method"] == "textDocument/didChange"
+    assert server.sent[0]["params"]["contentChanges"] == [_insert_event(0, 0, "(")]
+
+
+def test_incremental_falls_back_to_full_text_when_no_events() -> None:
+    """Defensive: if a client uses on_changed (full text) on an Incremental
+    bridge — e.g. legacy code paths or the future Full-sync fallback —
+    the bridge must still send something the server can apply, not crash.
+    Sends a full-text content change, since that's what's available."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="a",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_changed("ab")
+    clock.advance(150)
+    assert len(server.sent) == 1
+    assert server.sent[0]["params"]["contentChanges"] == [{"text": "ab"}]
+
+
+def test_none_sync_kind_skips_didchange() -> None:
+    """A server that advertises textDocumentSync.change == None still gets
+    didOpen/didSave/didClose (governed by openClose), but didChange is suppressed."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.NONE,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.on_change_event(_insert_event(0, 0, "x"))
+    clock.advance(150)
+    bridge.on_changed("xy")
+    clock.advance(150)
+    assert [s["method"] for s in server.sent] == []
