@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Completion now flushes any debounced `didChange` before firing
+  `textDocument/completion`. Previously, typing a trigger character
+  (e.g. `.`) could race the bridge's debounced send, so pylsp/clangd
+  consulted their pre-trigger snapshot and returned prefix matches
+  against the wrong text (e.g. `os.` returned `os` and `OSError` instead
+  of `os` module attributes). Same fix shape signatureHelp already
+  uses.
+
 ### Added
 
 - Incremental document sync (`TextDocumentSyncKind.Incremental`).

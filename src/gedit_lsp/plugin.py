@@ -349,6 +349,7 @@ class GeditLspPlugin(
             if view is not None:
                 self._completion_ctrls[doc] = CompletionController(
                     view=view, buffer=doc, server=server, uri=uri,
+                    flush_pending_change=bridge.flush_pending_change,
                 )
                 logger.info("attached LSP completion provider for %s", path)
             else:

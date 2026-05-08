@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import enum
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -254,12 +255,14 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         buffer: GtkSource.Buffer,
         server: LanguageServer,
         uri: str,
+        flush_pending_change: Callable[[], None] = lambda: None,
     ) -> None:
         GObject.Object.__init__(self)
         self._view = view
         self._buffer = buffer
         self._server = server
         self._uri = uri
+        self._flush_pending_change = flush_pending_change
         self._last_was_incomplete = False
         self._inflight_id: int | None = None
         # Persistent widgets for the Details pane. libgedit-gtksourceview's
@@ -290,6 +293,12 @@ class LspCompletionProvider(GObject.Object, GtkSource.CompletionProvider):
         return is_completion_supported(cap)
 
     def do_populate(self, context: GtkSource.CompletionContext) -> None:
+        # Flush any debounced didChange so the server's view of the buffer
+        # includes the trigger character (e.g. `.`) before we ask "what's
+        # at this position?". Otherwise pylsp/clangd consult their stale
+        # in-memory copy and return prefix matches against the pre-trigger
+        # text — same race signatureHelp solves the same way.
+        self._flush_pending_change()
         cap = self._server.capability("completionProvider")
         trigger_chars = trigger_characters_from(cap)
 
@@ -475,10 +484,12 @@ class CompletionController:
         buffer: GtkSource.Buffer,
         server: LanguageServer,
         uri: str,
+        flush_pending_change: Callable[[], None] = lambda: None,
     ) -> None:
         self._view = view
         self._provider = LspCompletionProvider(
-            view=view, buffer=buffer, server=server, uri=uri
+            view=view, buffer=buffer, server=server, uri=uri,
+            flush_pending_change=flush_pending_change,
         )
         completion = view.get_completion()  # type: ignore[attr-defined]
         if completion is not None:
