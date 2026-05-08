@@ -34,6 +34,7 @@ DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
     "goto-definition":  ["F12"],
     "go-back":          ["<Shift>F12"],
     "show-server-logs": [],
+    "format":           ["<Primary><Shift>i"],
 }
 
 DEFAULT_TUNABLES: dict[str, Any] = {
@@ -55,7 +56,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "stderrBufferMaxLines": 1000,
     "enabledFeatures": [
         "diagnostics", "hover", "definition", "outline",
-        "completion", "signatureHelp",
+        "completion", "signatureHelp", "formatting",
     ],
     "severityIcons": {
         "error":   "dialog-error-symbolic",

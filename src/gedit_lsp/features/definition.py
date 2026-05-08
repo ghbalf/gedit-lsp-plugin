@@ -3,7 +3,7 @@
 The controller sends `textDocument/definition`, classifies the response
 as 0/1/N locations, and dispatches:
     none   → status-bar message
-    single → Gedit.Window.create_tab_from_location() (or in-buffer move)
+    single → `navigate_to_uri` (in-buffer move or open-or-focus tab)
     many   → small Gtk.Popover listing each location
 
 The history stack is per-window. Goto pushes the *current* cursor location
@@ -17,8 +17,9 @@ from typing import TYPE_CHECKING, Any
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gio, Gtk
+from gi.repository import Gtk
 
+from gedit_lsp.navigation import navigate_to_uri
 from gedit_lsp.utf16 import text_iter_to_utf16, utf16_to_text_iter
 
 if TYPE_CHECKING:
@@ -110,29 +111,15 @@ class DefinitionController:
     def _navigate_to_uri_line_utf16(
         self, uri: str, line: int, char_utf16: int
     ) -> None:
-        active_view = self._window.get_active_view()
-        active_doc = active_view.get_buffer() if active_view else None
-        if active_doc and active_doc.get_file().get_location().get_uri() == uri:
-            it = utf16_to_text_iter(active_doc, line, char_utf16)
-            active_doc.place_cursor(it)
-            active_view.scroll_to_iter(it, 0.1, False, 0.0, 0.5)
-            return
-        gfile = Gio.File.new_for_uri(uri)
-        self._window.create_tab_from_location(
-            gfile, None, line + 1, char_utf16, False, True
+        navigate_to_uri(
+            self._window, uri, line, char_utf16,
+            to_iter=lambda buf: utf16_to_text_iter(buf, line, char_utf16),
         )
 
     def _navigate_to_uri_line_col(self, uri: str, line: int, col: int) -> None:
-        active_view = self._window.get_active_view()
-        active_doc = active_view.get_buffer() if active_view else None
-        if active_doc and active_doc.get_file().get_location().get_uri() == uri:
-            it = active_doc.get_iter_at_line_offset(line, col)
-            active_doc.place_cursor(it)
-            active_view.scroll_to_iter(it, 0.1, False, 0.0, 0.5)
-            return
-        gfile = Gio.File.new_for_uri(uri)
-        self._window.create_tab_from_location(
-            gfile, None, line + 1, col, False, True
+        navigate_to_uri(
+            self._window, uri, line, col,
+            to_iter=lambda buf: buf.get_iter_at_line_offset(line, col),
         )
 
     def _show_locations_popover(self, locs: list[dict[str, Any]]) -> None:

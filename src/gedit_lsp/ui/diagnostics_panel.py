@@ -1,16 +1,21 @@
 """Bottom panel listing all diagnostics across all open buffers in the window."""
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gio, Gtk
+from gi.repository import Gtk
+
+from gedit_lsp.navigation import navigate_to_uri
 
 if TYPE_CHECKING:
     from gi.repository import Gedit  # type: ignore[attr-defined]
 
+
+logger = logging.getLogger("gedit_lsp.diagnostics_panel")
 
 _SEVERITY_LABEL = {1: "Error", 2: "Warning", 3: "Info", 4: "Hint"}
 
@@ -60,5 +65,5 @@ class DiagnosticsPanel:
         it = self._store.get_iter(path)  # type: ignore[no-untyped-call]
         line = self._store.get_value(it, 1) - 1
         uri = self._store.get_value(it, 4)
-        gfile = Gio.File.new_for_uri(uri)
-        self._window.create_tab_from_location(gfile, None, line + 1, 0, False, True)
+        logger.info("diagnostics-panel: navigate to uri=%s line=%d", uri, line)
+        navigate_to_uri(self._window, uri, line, 0)
