@@ -39,17 +39,17 @@ class _FakeBuffer:
         self._line_text = line_text
         self._cursor_iter = _FakeIter(self, line, char)
 
-    def get_iter_at_mark(self, _mark: Any) -> "_FakeIter":
+    def get_iter_at_mark(self, _mark: Any) -> _FakeIter:
         return self._cursor_iter
 
     def get_insert(self) -> Any:
         return object()
 
-    def get_iter_at_line(self, line: int) -> "_FakeIter":
+    def get_iter_at_line(self, line: int) -> _FakeIter:
         return _FakeIter(self, line, 0)
 
     def get_text(
-        self, start: "_FakeIter", end: "_FakeIter", _hidden: bool
+        self, start: _FakeIter, end: _FakeIter, _hidden: bool
     ) -> str:
         return self._line_text[start.get_line_offset():end.get_line_offset()]
 

@@ -11,6 +11,7 @@ real bottom panel.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,7 @@ from urllib.parse import unquote, urlparse
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # type: ignore[attr-defined]
+from gi.repository import Gtk
 
 from gedit_lsp.navigation import navigate_to_uri
 from gedit_lsp.utf16 import utf16_to_text_iter
@@ -88,7 +89,7 @@ def _line_from_open_buffer(uri: str, line: int, window: Any) -> str | None:
                 end = doc.get_iter_at_line(line + 1)
             else:
                 end = doc.get_end_iter()
-            return doc.get_text(start, end, False).rstrip("\n")
+            return str(doc.get_text(start, end, False)).rstrip("\n")
         except Exception:
             return ""
     return None
@@ -136,9 +137,7 @@ class ReferencesPanel:
         self._store = Gtk.ListStore(str, int, str, str, int)  # type: ignore[call-arg]
         self._view = Gtk.TreeView(model=self._store)
         for i, title in enumerate(["File", "Line", "Preview"]):
-            col = Gtk.TreeViewColumn(  # type: ignore[call-arg, arg-type]
-                title, Gtk.CellRendererText(), text=i,
-            )
+            col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)  # type: ignore[call-arg,arg-type]
             self._view.append_column(col)
         self._view.connect("row-activated", self._on_row_activated)
         scrolled = Gtk.ScrolledWindow()
@@ -169,23 +168,19 @@ class ReferencesPanel:
             ])
 
     def clear(self) -> None:
-        self._store.clear()  # type: ignore[no-untyped-call]
+        self._store.clear()
 
     def reveal(self) -> None:
         """Make the bottom panel visible and select this tab."""
         panel = self._window.get_bottom_panel()
-        try:
+        # libgedit-tepl panel API varies between versions; we treat
+        # surface-failure as cosmetic — the tab still exists.
+        with contextlib.suppress(Exception):
             panel.set_visible(True)
-        except Exception:
-            # libgedit-tepl panel API varies between versions; we treat
-            # surface-failure as cosmetic — the tab still exists.
-            pass
-        try:
+        # Older libgedit-tepl may use a different selection API; the
+        # tab is still added and reachable manually.
+        with contextlib.suppress(Exception):
             panel.set_visible_child_name("lsp-references")
-        except Exception:
-            # Older libgedit-tepl may use a different selection API; the
-            # tab is still added and reachable manually.
-            pass
 
     def _on_row_activated(
         self,
