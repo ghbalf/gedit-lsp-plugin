@@ -98,9 +98,11 @@ For each location:
    `get_iter_at_line_offset(line+1, 0)` / `get_text(...)`. Fast,
    accurate, respects unsaved edits.
 2. **Closed file:** `Path(gfile.get_path()).read_text(errors="replace")
-   .splitlines()[line]`. Synchronous; per-file, not per-result, via a
-   small in-method dict cache so repeated hits in the same file don't
-   re-read.
+   .splitlines()[line]`. Synchronous, per-row. (An earlier draft of
+   this spec promised a per-file cache to avoid re-reads when several
+   results land in the same closed file; the implementation skipped it
+   under YAGNI — typical N is small enough that the disk cost is
+   imperceptible. Add the cache later if a profiler ever flags it.)
 3. **On any error** (binary file, permission denied, line out of
    range, decode failure surviving `errors="replace"`): preview is
    `""`. The row remains navigable.
@@ -135,12 +137,17 @@ docs/
 class ReferencesController:
     def __init__(
         self,
+        *,
         window: Gedit.Window,
         panel: ReferencesPanel,
-        flush_pending_change: Callable[[], None],
     ) -> None: ...
 
-    def trigger(self, server: LanguageServer, uri: str) -> None:
+    def trigger(
+        self,
+        server: LanguageServer,
+        uri: str,
+        flush_pending_change: Callable[[], None],
+    ) -> None:
         # 1. capability check: server.capability("referencesProvider")
         # 2. capture cursor (line, char_utf16) via text_iter_to_utf16
         # 3. flush_pending_change()    [edit-flush invariant]
@@ -152,6 +159,12 @@ class ReferencesController:
         #        on_response,
         #    )
         # 5. on_response: classify_locations -> none/single/many dispatch
+
+# Note: flush_pending_change is a per-trigger arg rather than a
+# constructor arg because the controller is window-scoped (one per
+# gedit window) but the bridge that owns flush_pending_change is
+# per-document. Passing it at trigger time keeps the controller
+# unaware of the bridge layer.
 ```
 
 Stateless beyond the panel reference. No GTK widgets owned directly —
@@ -167,9 +180,9 @@ class ReferencesPanel:
         # row-activated -> navigate_to_uri(window, uri, line, char_utf16)
         # add_titled to bottom panel as "lsp-references" / "LSP References"
 
-    def set_results(self, window: Gedit.Window,
-                    locations: list[dict[str, Any]]) -> None:
+    def set_results(self, locations: list[dict[str, Any]]) -> None:
         # clear + repopulate with previews
+        # (window is already on self from __init__)
 
     def clear(self) -> None: ...
 
@@ -188,7 +201,7 @@ behavior, same tests. The move is a behavior-preserving refactor.
 Shift+F4 / popup-menu "Find References"
   → win.lsp-references action
   → plugin._on_references_activate
-  → ReferencesController.trigger(server, uri)
+  → ReferencesController.trigger(server, uri, flush_pending_change)
        → server.capability("referencesProvider") check
        → bridge.flush_pending_change()        [edit-flush invariant]
        → server._send_request("textDocument/references", params, on_response)
@@ -197,7 +210,7 @@ on_response(msg):
   → classify_locations(msg.get("result"))
       → "none"   → window.get_statusbar().push(0, "LSP: no references found")
       → "single" → navigate_to_uri(window, ...)
-      → "many"   → panel.set_results(window, locs); panel.reveal()
+      → "many"   → panel.set_results(locs); panel.reveal()
 ```
 
 ## Edge cases
