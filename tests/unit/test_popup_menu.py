@@ -26,3 +26,10 @@ def test_label_with_bound_action_includes_accel_hint() -> None:
     assert label.startswith("Show Hover")
     assert label != "Show Hover"  # accel suffix appended
     assert "(" in label and ")" in label
+
+
+def test_menu_items_includes_find_references() -> None:
+    """The right-click LSP submenu must surface Find References mapped to
+    the win.lsp-references action so users without the keyboard accel
+    can still discover the feature."""
+    assert ("Find References", "lsp-references") in popup_menu.MENU_ITEMS
