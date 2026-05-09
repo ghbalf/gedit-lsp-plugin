@@ -73,7 +73,7 @@ works).
 | `hover` | `<Primary>k` | Show the hover popover at the cursor |
 | `goto-definition` | `F12` | Jump to the definition of the symbol at the cursor |
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
-| `references` | `<Primary><Shift>F12` | List all references to the symbol at the cursor in the bottom panel |
+| `references` | `<Shift>F4` | List all references to the symbol at the cursor in the bottom panel |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
 

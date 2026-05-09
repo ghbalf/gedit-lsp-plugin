@@ -49,14 +49,20 @@ results" inspection workflow.
 ### Trigger
 
 - **Action:** `win.lsp-references`
-- **Default accelerator:** `Ctrl+Shift+F12`
-  (VS Code's "Find All References" precedent; joins the F12 family
-  with our `F12` definition and `Shift+F12` go-back; function-key
-  based, layout-neutral on QWERTZ. Earlier candidates `F7` and
-  `Shift+F7` were rejected — gedit binds them to Toggle Cursor
-  Visibility and Check Spelling respectively. **Must still be verified
-  once registered** by checking the plugin's "registered action … accel"
-  log line, per the project's accel-owner-check rule.)
+- **Default accelerator:** `Shift+F4`
+  (Layout-neutral F-key chord; not in current `DEFAULT_KEYBINDINGS`;
+  not a known GNOME Shell or GtkSourceView binding; not in gedit's
+  known F-key bindings (F1 Help, F7 toggle cursor visibility, Shift+F7
+  spell check, F9 side panel, F11 fullscreen). Earlier candidates
+  rejected during implementation:
+  - `F7` / `Shift+F7` — gedit-bound (cursor visibility / spell check).
+  - `Ctrl+Shift+F12` — initial choice (VS Code precedent); registered
+    successfully but the keystroke was intercepted somewhere inside
+    gedit-46 / GtkSourceView before reaching our window-level action
+    map. Right-click route worked; accel route did not. Investigation
+    via `gsettings` ruled out GNOME Shell ownership; the actual
+    consumer is not yet identified. See the binding-owner-check memory
+    note for the live list of suspect surfaces.)
 - **Right-click popup-menu entry:** `"Find References"` in the existing
   LSP submenu.
 
@@ -179,7 +185,7 @@ behavior, same tests. The move is a behavior-preserving refactor.
 ### Data flow
 
 ```
-Ctrl+Shift+F12 / popup-menu "Find References"
+Shift+F4 / popup-menu "Find References"
   → win.lsp-references action
   → plugin._on_references_activate
   → ReferencesController.trigger(server, uri)
@@ -215,7 +221,7 @@ on_response(msg):
 ```python
 DEFAULT_KEYBINDINGS = {
     ...
-    "references": ["<Primary><Shift>F12"],
+    "references": ["<Shift>F4"],
 }
 
 DEFAULT_TUNABLES["enabledFeatures"] = [
@@ -231,7 +237,7 @@ Add a row to the keybindings table:
 
 | Action | Default | Config key |
 |---|---|---|
-| Find References | `<Primary><Shift>F12` | `references` |
+| Find References | `<Shift>F4` | `references` |
 
 ## Testing
 
@@ -304,7 +310,7 @@ Six commits in one PR (`feat/references`):
    `_attach_document` if `"references" in enabledFeatures`, dispose
    path in `_on_tab_removed` and `do_deactivate`.
 5. **`defaults.py`** — add `"references"` to `enabledFeatures`, add
-   `"references": ["Ctrl+Shift+F12"]` to `DEFAULT_KEYBINDINGS`. Update
+   `"references": ["<Shift>F4"]` to `DEFAULT_KEYBINDINGS`. Update
    `docs/configure.md` with the new entry. Doc-gate satisfied here.
 6. **`docs/protocol-coverage.md`** — mark
    `textDocument/references` ✓. **`docs/roadmap.md`** — move the entry
@@ -315,10 +321,16 @@ Each commit is independently revertible. The PR opens at step 6.
 
 ## Risks & open questions
 
-- **`Ctrl+Shift+F12` accel verification.** The memory rule requires a post-registration
-  log check. Done in step 4 by reading the plugin log after install.
-  Fallback if a clash surfaces: `Ctrl+Shift+R` (Eclipse-ish "find
-  references"; needs gedit/plugin owner check first).
+- **Accel verification (resolved during smoke test).** `Ctrl+Shift+F12`
+  was the originally-chosen default. The plugin log confirmed
+  registration succeeded, but the keystroke was intercepted somewhere
+  inside gedit-46 / GtkSourceView and never dispatched to our handler
+  (the right-click route worked, proving the action itself was wired
+  correctly). `gsettings` ruled out GNOME Shell ownership; the actual
+  consumer is not yet identified. Switched to `Shift+F4`, which
+  dispatches cleanly. The binding-owner-check memory note has been
+  extended with `Ctrl+Shift+F12` on the "claimed but by whom?" list so
+  this doesn't bite again.
 - **Preview cost on huge result sets.** N=10000 references would mean
   N file reads worst-case. The per-file cache makes this O(unique
   files), and most languages return references within one project
