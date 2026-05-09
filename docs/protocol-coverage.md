@@ -13,6 +13,7 @@
 | `textDocument/signatureHelp` (popover above cursor; active param bolded) | ✓ |
 | `textDocument/formatting` (Ctrl+Shift+I; whole document) | ✓ |
 | `textDocument/rangeFormatting` (Ctrl+Shift+I with selection) | ✓ |
+| `textDocument/references` (Ctrl+Shift+F12; many → "LSP References" bottom panel) | ✓ |
 
 `textDocument/didChange` is auto-selected per server: if the server's
 `textDocumentSync.change` advertises `Incremental` (2), the plugin sends
