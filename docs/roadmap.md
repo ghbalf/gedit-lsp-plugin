@@ -38,6 +38,14 @@ Editing operations:
 - `textDocument/references`.
 - `workspace/symbol`.
 
+Testing infrastructure (housekeeping; benefits multiple features
+above):
+
+- Multi-file integration test fixture. Current integration fixtures
+  are single-file; references / rename / `workspace/symbol` need
+  cross-file fixtures to exercise their core value. Build once, reuse
+  across feature PRs.
+
 ## v1.0.0 — Stable
 
 Criteria:
