@@ -101,7 +101,7 @@ def _line_from_disk(uri: str, line: int) -> str:
     path = Path(unquote(parsed.path))
     try:
         text = path.read_text(errors="replace")
-    except (OSError, UnicodeDecodeError):
+    except OSError:
         return ""
     lines = text.splitlines()
     if line < 0 or line >= len(lines):
@@ -177,6 +177,8 @@ class ReferencesPanel:
         try:
             panel.set_visible(True)
         except Exception:
+            # libgedit-tepl panel API varies between versions; we treat
+            # surface-failure as cosmetic — the tab still exists.
             pass
         try:
             panel.set_visible_child_name("lsp-references")

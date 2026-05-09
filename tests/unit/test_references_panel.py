@@ -56,9 +56,6 @@ class _FakeBuffer:
     def get_iter_at_line(self, line: int) -> str:
         return f"@{line}"
 
-    def get_iter_at_line_offset(self, line: int, _offset: int) -> str:
-        return f"@{line}+0"
-
     def get_line_count(self) -> int:
         return len(self._lines)
 
