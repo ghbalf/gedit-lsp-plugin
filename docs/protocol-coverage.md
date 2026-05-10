@@ -14,6 +14,8 @@
 | `textDocument/formatting` (Ctrl+Shift+I; whole document) | ✓ |
 | `textDocument/rangeFormatting` (Ctrl+Shift+I with selection) | ✓ |
 | `textDocument/references` (Shift+F4; many → "LSP References" bottom panel) | ✓ |
+| `textDocument/rename` (F2; popover at cursor; multi-file apply, closed files opened as tabs) | ✓ |
+| `textDocument/prepareRename` (gates rename when server advertises it) | ✓ |
 
 `textDocument/didChange` is auto-selected per server: if the server's
 `textDocumentSync.change` advertises `Incremental` (2), the plugin sends

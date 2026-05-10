@@ -32,7 +32,6 @@ aren't lost):
 
 Editing operations:
 
-- `textDocument/rename` + `prepareRename`.
 - `textDocument/codeAction`.
 - `textDocument/formatting`, `rangeFormatting`.
 - `textDocument/references`.
