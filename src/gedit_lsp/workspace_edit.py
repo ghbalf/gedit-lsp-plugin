@@ -23,13 +23,15 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("GtkSource", "300")
+from gi.repository import Gtk, GtkSource
 
 from gedit_lsp.features.formatting import apply_text_edits
-
-if TYPE_CHECKING:
-    from gi.repository import Gtk, GtkSource
-
 
 logger = logging.getLogger("gedit_lsp.workspace_edit")
 
