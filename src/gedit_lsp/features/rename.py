@@ -265,13 +265,12 @@ class RenameController:
             if remaining[0] == 0:
                 self._do_apply(edit)
 
+        def _make_cb(u: str) -> Callable[[bool], None]:
+            def _cb(ok: bool) -> None:
+                _on_one_loaded(u, ok)
+            return _cb
+
         for uri in to_load:
-
-            def _make_cb(u: str) -> Callable[[bool], None]:
-                def _cb(ok: bool) -> None:
-                    _on_one_loaded(u, ok)
-                return _cb
-
             self._load_uri(self._window, uri, _make_cb(uri))
 
     @staticmethod
@@ -295,11 +294,20 @@ class RenameController:
         return uris
 
     def _do_apply(self, edit: dict[str, Any]) -> None:
-        applied, failed = apply_workspace_edit(
-            edit,
-            buffer_for_uri=lambda u: self._buffer_for_uri(self._window, u),
-        )
-        statusbar = self._window.get_statusbar()
+        # Window-closed guard: if the user closed the gedit window while
+        # a load was in flight, get_statusbar() (or any later GTK call)
+        # raises RuntimeError on the destroyed wrapper. Per spec, the
+        # callback should no-op silently in that case rather than
+        # crashing the plugin.
+        try:
+            applied, failed = apply_workspace_edit(
+                edit,
+                buffer_for_uri=lambda u: self._buffer_for_uri(self._window, u),
+            )
+            statusbar = self._window.get_statusbar()
+        except RuntimeError as exc:
+            logger.info("rename: window closed mid-apply, skipping (%r)", exc)
+            return
         n = len(applied)
         m = len(failed)
         if m == 0:

@@ -413,6 +413,29 @@ def test_rename_request_payload_shape() -> None:
     assert params["newName"] == "new_name"
 
 
+def test_unchanged_newName_still_sends_rename_request() -> None:
+    # Spec: "New name == placeholder → send the request anyway; server
+    # typically returns null/empty; statusbar 'LSP: no changes'." This
+    # pins the "send anyway" behaviour against a future regression that
+    # might add an `if new_name == placeholder: return` guard.
+    server = _FakeServer(rename_capability={"prepareProvider": True})
+    ctrl, server, _statusbar, _popovers = _build(
+        server=server, popover_commit_text="ServerSaidThis",
+    )
+    _trigger(ctrl, server)
+    server.callbacks[0]({"result": {
+        "range": {"start": {"line": 0, "character": 0},
+                  "end":   {"line": 0, "character": 3}},
+        "placeholder": "ServerSaidThis",
+    }})
+    # Both prepareRename AND rename were sent — the controller does not
+    # short-circuit when the user submits the same text.
+    assert [r[0] for r in server.requests] == [
+        "textDocument/prepareRename", "textDocument/rename",
+    ]
+    assert server.requests[1][1]["newName"] == "ServerSaidThis"
+
+
 def test_rename_server_error_pushes_failure_message() -> None:
     server = _FakeServer(rename_capability=True)
     ctrl, server, statusbar, _popovers = _build(
@@ -599,4 +622,36 @@ def test_changes_map_fallback_collected_correctly(monkeypatch: Any) -> None:
     }})
     assert any(
         "renamed 1 file" in m.lower() for _ctx, m in statusbar.messages
+    )
+
+
+def test_window_closed_during_load_does_not_crash(monkeypatch: Any) -> None:
+    # Spec: "If the controller's window is closed while loads are
+    # pending, the callback no-ops." Simulate it by having the buffer
+    # lookup raise RuntimeError (PyGObject's "wrapper for X has been
+    # destroyed" behavior) on the apply call.
+    monkeypatch.setattr(
+        "gedit_lsp.features.rename.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (_ for _ in ()).throw(
+            RuntimeError("wrapper destroyed"),
+        ),
+    )
+
+    server = _FakeServer(rename_capability=True)
+    ctrl, server, statusbar, _popovers = _build(
+        server=server, real_buffer=True, popover_commit_text="new",
+        load_uri=lambda _w, _u, on_done: on_done(True),
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
+    _trigger(ctrl, server)
+    # If the guard is missing, this raises RuntimeError unhandled and
+    # the test fails. With the guard, we get a clean no-op + log line.
+    server.callbacks[0]({"result": {
+        "documentChanges": [
+            {"textDocument": {"uri": "file:///a.py"}, "edits": []},
+        ],
+    }})
+    # No statusbar message because the apply itself raised.
+    assert not any(
+        "renamed" in m.lower() for _ctx, m in statusbar.messages
     )
