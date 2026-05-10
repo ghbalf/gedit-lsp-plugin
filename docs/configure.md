@@ -73,6 +73,7 @@ works).
 | `hover` | `<Primary>k` | Show the hover popover at the cursor |
 | `goto-definition` | `F12` | Jump to the definition of the symbol at the cursor |
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
+| `references` | `<Shift>F4` | List all references to the symbol at the cursor in the bottom panel |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
 
@@ -109,7 +110,7 @@ Per-key replacement; missing keys keep their default.
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
 | `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
-| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting"]` | Which features run |
+| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references"]` | Which features run |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
 | `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |
 | `severityUnderlineColor` | obj | (see defaults) | Per-severity squiggle color (CSS hex). Overrides the theme's red default for `Pango.Underline.ERROR`. Set a value to `""` to fall back to the theme color. |

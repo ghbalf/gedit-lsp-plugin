@@ -43,6 +43,7 @@ from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.formatting import FormattingController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.features.outline import OutlineController
+from gedit_lsp.features.references import ReferencesController
 from gedit_lsp.features.signature_help import SignatureHelpController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
@@ -52,6 +53,7 @@ from gedit_lsp.server import LanguageServer, ServerState
 from gedit_lsp.ui import popup_menu, server_logs
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
+from gedit_lsp.ui.references_panel import ReferencesPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
 from gedit_lsp.utf16 import text_iter_to_utf16
 
@@ -157,6 +159,10 @@ class GeditLspPlugin(
         if not cfg.tunable("showStatusbarIndicator"):
             self._statusbar.hide()
         self._diag_panel = DiagnosticsPanel(win)
+        self._references_panel = ReferencesPanel(win)
+        self._references_ctrl = ReferencesController(
+            window=win, panel=self._references_panel,
+        )
         self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
@@ -167,6 +173,7 @@ class GeditLspPlugin(
             ("lsp-hover", "hover", self._on_hover_activate),
             ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
             ("lsp-go-back", "go-back", self._on_go_back_activate),
+            ("lsp-references", "references", self._on_references_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
             ("lsp-format", "format", self._on_format_activate),
         ]:
@@ -532,6 +539,28 @@ class GeditLspPlugin(
     ) -> None:
         logger.info("go-back action invoked")
         self._definition_ctrl.go_back()
+
+    def _on_references_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        logger.info("references action invoked")
+        view = self.window.get_active_view()
+        if view is None:
+            logger.info("references: no active view")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            logger.info(
+                "references: doc not bridged (bridge=%s server=%s)",
+                bridge, server,
+            )
+            return
+        logger.info("references: triggering, server.state=%s", server.state)
+        self._references_ctrl.trigger(
+            server, bridge.uri, bridge.flush_pending_change,
+        )
 
     def _on_format_activate(
         self, _action: Gio.SimpleAction, _param: GObject.Object | None

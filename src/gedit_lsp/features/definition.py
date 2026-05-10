@@ -19,7 +19,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
-from gedit_lsp.navigation import navigate_to_uri
+from gedit_lsp.navigation import classify_locations, navigate_to_uri
 from gedit_lsp.utf16 import text_iter_to_utf16, utf16_to_text_iter
 
 if TYPE_CHECKING:
@@ -28,20 +28,6 @@ if TYPE_CHECKING:
     from gi.repository import Gedit  # type: ignore[attr-defined]
 
     from gedit_lsp.server import LanguageServer
-
-
-def classify_locations(result: Any) -> tuple[str, list[dict[str, Any]]]:
-    if result is None:
-        return ("none", [])
-    if isinstance(result, dict):
-        return ("single", [result])
-    if isinstance(result, list):
-        if not result:
-            return ("none", [])
-        if len(result) == 1:
-            return ("single", result)
-        return ("many", result)
-    return ("none", [])
 
 
 class CursorHistory:

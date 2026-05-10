@@ -99,3 +99,27 @@ def navigate_to_uri(
         from gi.repository import Gedit  # type: ignore[attr-defined]
         load_location = Gedit.commands_load_location
     load_location(window, gfile, None, line + 1, column)
+
+
+def classify_locations(result: Any) -> tuple[str, list[dict[str, Any]]]:
+    """Classify an LSP `Location | Location[] | null` response.
+
+    Returns one of:
+      - `("none",   [])`  — null result or empty array
+      - `("single", [loc])` — single object or single-element array
+      - `("many",   locs)` — multi-element array
+
+    Used by both `textDocument/definition` and `textDocument/references`,
+    which share the `Location[]` shape.
+    """
+    if result is None:
+        return ("none", [])
+    if isinstance(result, dict):
+        return ("single", [result])
+    if isinstance(result, list):
+        if not result:
+            return ("none", [])
+        if len(result) == 1:
+            return ("single", result)
+        return ("many", result)
+    return ("none", [])
