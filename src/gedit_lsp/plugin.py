@@ -44,6 +44,7 @@ from gedit_lsp.features.formatting import FormattingController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.features.references import ReferencesController
+from gedit_lsp.features.rename import RenameController
 from gedit_lsp.features.signature_help import SignatureHelpController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
@@ -163,6 +164,7 @@ class GeditLspPlugin(
         self._references_ctrl = ReferencesController(
             window=win, panel=self._references_panel,
         )
+        self._rename_ctrl = RenameController(window=win)
         self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
@@ -174,6 +176,7 @@ class GeditLspPlugin(
             ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
             ("lsp-go-back", "go-back", self._on_go_back_activate),
             ("lsp-references", "references", self._on_references_activate),
+            ("lsp-rename", "rename", self._on_rename_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
             ("lsp-format", "format", self._on_format_activate),
         ]:
@@ -559,6 +562,28 @@ class GeditLspPlugin(
             return
         logger.info("references: triggering, server.state=%s", server.state)
         self._references_ctrl.trigger(
+            server, bridge.uri, bridge.flush_pending_change,
+        )
+
+    def _on_rename_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        logger.info("rename action invoked")
+        view = self.window.get_active_view()
+        if view is None:
+            logger.info("rename: no active view")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            logger.info(
+                "rename: doc not bridged (bridge=%s server=%s)",
+                bridge, server,
+            )
+            return
+        logger.info("rename: triggering, server.state=%s", server.state)
+        self._rename_ctrl.trigger(
             server, bridge.uri, bridge.flush_pending_change,
         )
 
