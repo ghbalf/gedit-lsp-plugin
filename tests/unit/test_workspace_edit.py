@@ -70,6 +70,14 @@ def test_derive_placeholder_works_on_last_line_without_newline() -> None:
     assert derive_placeholder(buf, 1, 0) == "second"
 
 
+def test_derive_placeholder_cursor_one_past_end_of_identifier() -> None:
+    # `bar` spans [6, 9); cursor at 9 is on the `(` after the token,
+    # not on the token. m.end() exclusive matches Python re conventions
+    # and the user's mental model: "cursor on '(' shouldn't rename `bar`".
+    buf = _buf("foo = bar(baz)\n")
+    assert derive_placeholder(buf, 0, 9) == ""
+
+
 # --- apply_workspace_edit: documentChanges precedence -------------
 
 
@@ -225,15 +233,16 @@ def test_documentChanges_with_malformed_entries_skipped() -> None:
 # --- apply_workspace_edit: per-file edit isolation ---------------
 
 
-def test_per_file_edits_handed_through_unchanged() -> None:
+def test_per_file_edits_handed_through_unchanged(monkeypatch: Any) -> None:
     captured: list[tuple[str, list[Any]]] = []
 
     def fake_apply(buffer: Any, edits: list[Any]) -> None:
         # buffer is uniquely tagged per uri so we can verify isolation.
         captured.append((buffer.tag, edits))
 
-    import gedit_lsp.workspace_edit as we
-    we.apply_text_edits = fake_apply  # type: ignore[assignment]
+    monkeypatch.setattr(
+        "gedit_lsp.workspace_edit.apply_text_edits", fake_apply,
+    )
 
     a_edits = [{"range": {"start": {"line": 0, "character": 0},
                           "end":   {"line": 0, "character": 1}}, "newText": "A"}]

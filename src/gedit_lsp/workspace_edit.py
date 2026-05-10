@@ -64,6 +64,8 @@ def derive_placeholder(
     if line_text.endswith("\n"):
         line_text = line_text[:-1]
     for m in _IDENT_RE.finditer(line_text):
+        # m.end() is one-past-last (Python re convention), so cursor ==
+        # m.end() means the cursor is on the character *after* the token.
         if m.start() <= cursor_char_utf16 < m.end():
             return m.group(0)
     return ""
