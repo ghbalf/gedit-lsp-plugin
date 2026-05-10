@@ -74,6 +74,7 @@ works).
 | `goto-definition` | `F12` | Jump to the definition of the symbol at the cursor |
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
 | `references` | `<Shift>F4` | List all references to the symbol at the cursor in the bottom panel |
+| `rename` | `F2` | Rename the symbol at the cursor across every file the server's WorkspaceEdit touches (closed files are opened as tabs and left dirty for review) |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
 
