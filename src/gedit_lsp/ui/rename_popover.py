@@ -47,6 +47,15 @@ class RenamePopover:
         on_commit: Callable[[str], None],
         on_cancel: Callable[[], None],
     ) -> None:
+        # Defensive guard: if a previous popover is still up (rapid
+        # double-trigger), tear it down silently before showing the new
+        # one. Clear the old callbacks first so _on_closed doesn't fire
+        # the previous on_cancel against the new request's state.
+        if self._popover is not None:
+            self._on_commit = None
+            self._on_cancel = None
+            self._popover.popdown()
+
         self._on_commit = on_commit
         self._on_cancel = on_cancel
 
