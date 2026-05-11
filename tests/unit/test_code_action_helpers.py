@@ -199,6 +199,15 @@ def test_extract_diag_context_cursor_on_start_boundary() -> None:
     assert extract_diag_context(diagnostics, 0, 0) == diagnostics
 
 
+def test_extract_diag_context_cursor_on_end_boundary() -> None:
+    diagnostics = [
+        {"range": {"start": {"line": 0, "character": 0},
+                   "end":   {"line": 0, "character": 4}}},
+    ]
+    # Cursor exactly on end — included (closed interval on both ends)
+    assert extract_diag_context(diagnostics, 0, 4) == diagnostics
+
+
 def test_extract_diag_context_range_fully_before_cursor() -> None:
     diagnostics = [
         {"range": {"start": {"line": 2, "character": 0},
