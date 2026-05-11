@@ -49,7 +49,7 @@ def test_diagnostics_populate_lit_lines() -> None:
     server._test_listeners[0]({
         "uri": "file:///a.py",
         "diagnostics": [
-            {"range": {"start": {"line": 3, "character": 0}, "end": {"line": 3, "character": 4}}},
+            {"range": {"start": {"line": 3, "character": 0}, "end": {"line": 5, "character": 4}}},
             {"range": {"start": {"line": 7, "character": 0}, "end": {"line": 7, "character": 4}}},
             {"range": {"start": {"line": 3, "character": 5}, "end": {"line": 3, "character": 9}}},
         ],
@@ -116,13 +116,16 @@ def test_dispose_removes_listener_and_renderer() -> None:
 def test_double_dispose_is_safe() -> None:
     server = _make_server()
     view = MagicMock()
-    view.get_gutter.return_value = MagicMock()
+    gutter_obj = MagicMock()
+    view.get_gutter.return_value = gutter_obj
     g = LightbulbGutter(
         view=view, server=server, uri="file:///a.py",
         on_activate=lambda _line: None,
     )
     g.dispose()
     g.dispose()  # must not raise
+    assert gutter_obj.remove.call_count == 1  # pin _disposed-flag idempotency
+    assert len(server._test_listeners) == 0
 
 
 def test_activate_line_calls_callback() -> None:
