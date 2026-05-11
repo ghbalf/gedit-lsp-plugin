@@ -16,6 +16,7 @@ async file-load round trip when the buffer is already in-memory.
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, cast
 
 import gi
@@ -123,3 +124,56 @@ def classify_locations(result: Any) -> tuple[str, list[dict[str, Any]]]:
             return ("single", result)
         return ("many", result)
     return ("none", [])
+
+
+def default_load_uri(
+    window: Any,
+    uri: str,
+    on_loaded: Callable[[bool], None],
+) -> None:
+    """Open `uri` in `window` and call on_loaded(success) when ready.
+
+    Uses Gedit.commands_load_location (1-indexed line/column; we pass
+    1, 0 since callers don't care about cursor placement on the new
+    tab) and listens for the document's `loaded` signal.
+
+    Replaceable in unit tests via constructor injection.
+
+    Pre-flight check: a malformed WorkspaceEdit (e.g. pylsp's
+    rope_rename returns URIs rooted at "/" instead of the project
+    root) would otherwise spawn a ghost error tab. Skip the load and
+    report failure if the URI's path doesn't exist on disk.
+    """
+    gi.require_version("Gedit", "3.0")
+    from gi.repository import Gedit  # type: ignore[attr-defined]
+
+    gfile = Gio.File.new_for_uri(uri)
+    path = gfile.get_path()
+    if path is None or not Path(path).is_file():
+        on_loaded(False)
+        return
+    Gedit.commands_load_location(window, gfile, None, 1, 0)
+    tab = window.get_tab_from_location(gfile)
+    if tab is None:
+        on_loaded(False)
+        return
+    doc = tab.get_document()
+    handler_id: list[int] = []
+
+    def _on_loaded(_doc: Any) -> None:
+        if handler_id:
+            doc.disconnect(handler_id[0])
+        on_loaded(True)
+
+    handler_id.append(doc.connect("loaded", _on_loaded))
+
+
+def default_buffer_for_uri(window: Any, uri: str) -> Any:
+    """Walk window.get_documents() for the matching URI. Replaceable
+    in unit tests via constructor injection.
+    """
+    for doc in window.get_documents():
+        gfile = doc.get_file().get_location()
+        if gfile is not None and gfile.get_uri() == uri:
+            return doc
+    return None
