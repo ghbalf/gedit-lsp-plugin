@@ -138,6 +138,32 @@ class DocumentBridge:
             self._clock.cancel(self._pending_handle)
             self._flush_change()
 
+    def revert_to_disk(self, disk_text: str) -> None:
+        """Push a full-text didChange replacing pending edits with `disk_text`.
+
+        Used by the dirty-close cache-workaround path: if a buffer that was
+        modified (e.g. by apply_workspace_edit during rename) is closed
+        without saving, parso's parse cache for this file remains pinned
+        at the in-memory rename content. The next project-wide rename
+        then misses references in this file. Reverting pylsp's view to the
+        on-disk content immediately before close keeps parso's cache
+        aligned with disk so subsequent project searches read the right
+        symbols. See `project_pylsp_jedi_rename_caveats` memory.
+        """
+        if self._pending_handle is not None:
+            self._clock.cancel(self._pending_handle)
+            self._pending_handle = None
+        self._pending_events.clear()
+        self._text = disk_text
+        self._version += 1
+        self._server.send_notification(
+            "textDocument/didChange",
+            {
+                "textDocument": {"uri": self.uri, "version": self._version},
+                "contentChanges": [{"text": disk_text}],
+            },
+        )
+
     def detach(self) -> None:
         if self._pending_handle is not None:
             self._clock.cancel(self._pending_handle)

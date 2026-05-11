@@ -249,6 +249,7 @@ class GeditLspPlugin(
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
             self._diag_panel.clear_for_uri(bridge.uri)
+            self._revert_pylsp_view_if_dirty(doc, bridge)
             bridge.detach()
         self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)
@@ -261,6 +262,41 @@ class GeditLspPlugin(
         if sig_ctrl is not None:
             sig_ctrl.dispose()
         self._formatting_ctrls.pop(doc, None)
+
+    def _revert_pylsp_view_if_dirty(
+        self, doc: Gedit.Document, bridge: DocumentBridge
+    ) -> None:
+        """If `doc` is being closed with unsaved edits, push pylsp's view of
+        the file back to the on-disk content before the impending didClose,
+        then trigger a documentSymbol request so the server actually
+        re-parses (otherwise its parser cache stays pinned at the in-memory
+        edits and project-wide queries — notably rename — miss references
+        in this file). See `project_pylsp_jedi_rename_caveats`.
+        """
+        if not doc.get_modified():
+            return
+        server = self._servers.get(doc)
+        if server is None:
+            return
+        path = Gio.File.new_for_uri(bridge.uri).get_path()
+        if path is None:
+            return
+        try:
+            disk_text = Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.info("revert-on-close: cannot read %s: %r", bridge.uri, exc)
+            return
+        if disk_text == bridge._text:
+            return
+        bridge.revert_to_disk(disk_text)
+        # Fire-and-forget documentSymbol — its only purpose is to make
+        # pylsp call jedi_script() on the now-disk-content version, which
+        # is what evicts the stale entry from parso's parser cache.
+        server._send_request(
+            "textDocument/documentSymbol",
+            {"textDocument": {"uri": bridge.uri}},
+            lambda _resp: None,
+        )
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:

@@ -250,6 +250,53 @@ def test_incremental_falls_back_to_full_text_when_no_events() -> None:
     assert server.sent[0]["params"]["contentChanges"] == [{"text": "ab"}]
 
 
+def test_revert_to_disk_sends_full_text_didchange_and_bumps_version() -> None:
+    """The dirty-close cache workaround: a single didChange with full-text
+    contentChange replacing any pending events. Mutation invariant: change
+    `bridge._version += 1` to `+= 0` and the version-monotonic assertion
+    breaks; remove the contentChanges payload and the shape assertion breaks.
+    """
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///lib.py", language_id="python", text="renamed_content",
+        server=server, clock=clock, debounce_ms=150,
+        sync_kind=SyncKind.INCREMENTAL,
+    )
+    bridge.attach()
+    initial_version = 1  # didOpen used v1
+    # Stage a pending event that would otherwise fire on debounce
+    bridge.on_change_event(_insert_event(0, 0, "extra"))
+    server.sent.clear()
+
+    bridge.revert_to_disk("disk_content")
+
+    assert len(server.sent) == 1
+    msg = server.sent[0]
+    assert msg["method"] == "textDocument/didChange"
+    assert msg["params"]["textDocument"]["version"] == initial_version + 1
+    assert msg["params"]["contentChanges"] == [{"text": "disk_content"}]
+    # Pending event was discarded (advancing clock must NOT fire another change)
+    clock.advance(1000)
+    assert len(server.sent) == 1
+
+
+def test_revert_to_disk_then_detach_sends_didchange_then_didclose() -> None:
+    """The full close-with-revert sequence: didChange(disk), then didClose."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///lib.py", language_id="python", text="renamed",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    server.sent.clear()
+    bridge.revert_to_disk("on_disk")
+    bridge.detach()
+    methods = [s["method"] for s in server.sent]
+    assert methods == ["textDocument/didChange", "textDocument/didClose"]
+
+
 def test_none_sync_kind_skips_didchange() -> None:
     """A server that advertises textDocumentSync.change == None still gets
     didOpen/didSave/didClose (governed by openClose), but didChange is suppressed."""
