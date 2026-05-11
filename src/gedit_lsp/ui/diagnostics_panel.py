@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote
 
 import gi
 
@@ -20,13 +21,18 @@ logger = logging.getLogger("gedit_lsp.diagnostics_panel")
 _SEVERITY_LABEL = {1: "Error", 2: "Warning", 3: "Info", 4: "Hint"}
 
 
+def _uri_basename(uri: str) -> str:
+    """Display name for the File column. Percent-decoded, last path segment."""
+    return unquote(uri.rsplit("/", 1)[-1]) if uri else ""
+
+
 class DiagnosticsPanel:
     def __init__(self, window: Gedit.Window) -> None:
         self._window = window
-        # cols: severity, line, message, source, uri (hidden)
-        self._store = Gtk.ListStore(str, int, str, str, str)  # type: ignore[call-arg]
+        # cols: severity, file, line, message, source, uri (hidden)
+        self._store = Gtk.ListStore(str, str, int, str, str, str)  # type: ignore[call-arg]
         self._view = Gtk.TreeView(model=self._store)
-        for i, title in enumerate(["Severity", "Line", "Message", "Source"]):
+        for i, title in enumerate(["Severity", "File", "Line", "Message", "Source"]):
             col = Gtk.TreeViewColumn(title, Gtk.CellRendererText(), text=i)  # type: ignore[call-arg,arg-type]
             self._view.append_column(col)
         self._view.connect("row-activated", self._on_row_activated)
@@ -44,16 +50,17 @@ class DiagnosticsPanel:
         rows_to_remove: list[Gtk.TreePath] = []
         it = self._store.get_iter_first()
         while it:
-            if self._store.get_value(it, 4) == uri:
+            if self._store.get_value(it, 5) == uri:
                 rows_to_remove.append(self._store.get_path(it))
             it = self._store.iter_next(it)  # type: ignore[no-untyped-call]
         for path in reversed(rows_to_remove):
             self._store.remove(self._store.get_iter(path))  # type: ignore[no-untyped-call]
+        basename = _uri_basename(uri)
         for d in diagnostics:
             sev = _SEVERITY_LABEL.get(d.get("severity", 1), "Error")
             line = d["range"]["start"]["line"] + 1
             self._store.append(  # type: ignore[no-untyped-call]
-                [sev, line, d.get("message", ""), d.get("source", ""), uri]
+                [sev, basename, line, d.get("message", ""), d.get("source", ""), uri]
             )
 
     def _on_row_activated(
@@ -63,7 +70,7 @@ class DiagnosticsPanel:
         _column: Gtk.TreeViewColumn,
     ) -> None:
         it = self._store.get_iter(path)  # type: ignore[no-untyped-call]
-        line = self._store.get_value(it, 1) - 1
-        uri = self._store.get_value(it, 4)
+        line = self._store.get_value(it, 2) - 1
+        uri = self._store.get_value(it, 5)
         logger.info("diagnostics-panel: navigate to uri=%s line=%d", uri, line)
         navigate_to_uri(self._window, uri, line, 0)
