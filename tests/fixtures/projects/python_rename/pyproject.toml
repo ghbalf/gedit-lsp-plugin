@@ -1,0 +1,9 @@
+# Marks this directory as a Python project root for pylsp's
+# project-detection (so the server treats lib.py / app.py / utils.py
+# as one workspace and resolves cross-file references). The plugin's
+# DEFAULT_ROOT_MARKERS includes "pyproject.toml".
+[project]
+name = "python_rename_smoke"
+version = "0.0.0"
+description = "Multi-file fixture for the rename smoke test."
+requires-python = ">=3.10"

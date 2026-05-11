@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from gedit_lsp.utf16 import text_iter_to_utf16, utf16_to_text_iter
@@ -40,6 +41,11 @@ def _default_load_uri(
     tab) and listens for the document's `loaded` signal.
 
     Replaceable in unit tests via RenameController(load_uri=...).
+
+    Pre-flight check: a malformed WorkspaceEdit (e.g. pylsp's
+    rope_rename returns URIs rooted at "/" instead of the project
+    root) would otherwise spawn a ghost error tab. Skip the load and
+    report failure if the URI's path doesn't exist on disk.
     """
     import gi
 
@@ -47,6 +53,11 @@ def _default_load_uri(
     from gi.repository import Gedit, Gio  # type: ignore[attr-defined]
 
     gfile = Gio.File.new_for_uri(uri)
+    path = gfile.get_path()
+    if path is None or not Path(path).is_file():
+        logger.info("rename: refusing to load non-existent uri %s", uri)
+        on_loaded(False)
+        return
     Gedit.commands_load_location(window, gfile, None, 1, 0)
     tab = window.get_tab_from_location(gfile)
     if tab is None:
@@ -147,6 +158,7 @@ class RenameController:
                 return
             result = msg.get("result")
             if result is None:
+                logger.info("rename: prepareRename returned null — refused")
                 statusbar.push(0, "LSP: cannot rename symbol here")
                 return
             placeholder = self._placeholder_from_prepare(result, buf, line, char)
