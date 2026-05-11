@@ -253,3 +253,156 @@ def test_lightbulb_cursor_line_repositions_cursor(monkeypatch: pytest.MonkeyPatc
 
     buf.get_iter_at_line.assert_called_once_with(8)
     buf.place_cursor.assert_called_once_with(line_iter)
+
+
+def _commit_via_popover(controller: Any, server: FakeServer, action_dict: dict[str, Any]) -> None:
+    """Drive the controller through trigger() and pull the commit
+    callback off the popover.show() call."""
+    popover = MagicMock()
+    controller._popover_factory = lambda _v: popover
+    # Trigger
+    controller.trigger(
+        server, "file:///a.py", lambda: None,
+        diagnostics_for_uri=lambda _uri: [],
+    )
+    _, _, response_cb = server.requests[0]
+    response_cb({"result": [action_dict]})
+    # Pull the on_commit
+    commit_cb = popover.show.call_args.kwargs["on_commit"]
+    action = popover.show.call_args.kwargs["actions"][0]
+    commit_cb(action)
+
+
+def test_commit_edit_only_applies_edit(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+    applied_edits: list[Any] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (applied_edits.append(edit), ([], []))[1],
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    edit = {"changes": {"file:///a.py": []}}
+    _commit_via_popover(controller, server, {
+        "title": "Apply", "kind": "quickfix", "edit": edit,
+    })
+
+    assert applied_edits == [edit]
+    # No executeCommand should be sent
+    assert all(m != "workspace/executeCommand" for m, _, _ in server.requests)
+
+
+def test_commit_command_only_sends_execute_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda *_a, **_k: ([], []),
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    cmd = {"title": "Run", "command": "do.thing", "arguments": []}
+    _commit_via_popover(controller, server, {
+        "title": "Run", "kind": "quickfix", "command": cmd,
+    })
+
+    exec_calls = [(m, p) for m, p, _ in server.requests if m == "workspace/executeCommand"]
+    assert len(exec_calls) == 1
+    _, params = exec_calls[0]
+    assert params == cmd
+
+
+def test_commit_edit_and_command_edits_first_then_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+    order: list[str] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda *_a, **_k: (order.append("edit"), ([], []))[1],
+    )
+    # Patch _send_request to record method order
+    orig_send = server._send_request
+    def tracked_send(method: str, params: dict, cb: Any) -> int:
+        if method == "workspace/executeCommand":
+            order.append("command")
+        return orig_send(method, params, cb)
+    server._send_request = tracked_send  # type: ignore[method-assign]
+
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    edit = {"changes": {"file:///a.py": []}}
+    cmd = {"title": "After", "command": "do.thing", "arguments": []}
+    _commit_via_popover(controller, server, {
+        "title": "Combo", "kind": "quickfix", "edit": edit, "command": cmd,
+    })
+
+    assert order == ["edit", "command"]
+
+
+def test_commit_needs_resolve_fires_resolve_then_executes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+    applied: list[Any] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (applied.append(edit), ([], []))[1],
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    # Action with only `data` — needs_resolve True
+    _commit_via_popover(controller, server, {
+        "title": "Stub", "kind": "quickfix", "data": {"id": "fix-1"},
+    })
+
+    # First the request, then resolve. Find resolve.
+    resolve_calls = [(p, cb) for m, p, cb in server.requests if m == "codeAction/resolve"]
+    assert len(resolve_calls) == 1
+    resolve_params, resolve_cb = resolve_calls[0]
+    # Resolve must carry the original action's data
+    assert resolve_params["data"] == {"id": "fix-1"}
+
+    # Server responds with the populated action
+    resolve_cb({"result": {
+        "title": "Stub", "kind": "quickfix",
+        "edit": {"changes": {"file:///a.py": []}},
+    }})
+
+    # Now the edit must have been applied
+    assert len(applied) == 1
+
+
+def test_commit_resolve_error_statusbar_no_apply(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = FakeServer(capability=True)
+    statusbar = MagicMock()
+    view = _make_view_at_cursor()
+    window = _make_window(statusbar=statusbar, view=view)
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda *_a, **_k: ([], []),
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    _commit_via_popover(controller, server, {
+        "title": "Stub", "kind": "quickfix", "data": {"id": "x"},
+    })
+    resolve_cb = next(
+        cb for m, _, cb in server.requests if m == "codeAction/resolve"
+    )
+    resolve_cb({"error": {"code": -32603, "message": "fail"}})
+
+    pushed = [c.args[1] for c in statusbar.push.call_args_list]
+    assert any("could not resolve" in m.lower() for m in pushed)

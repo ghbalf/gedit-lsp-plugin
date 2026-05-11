@@ -16,13 +16,12 @@ from typing import TYPE_CHECKING, Any
 from gedit_lsp.code_action import (
     NormalizedAction,
     extract_diag_context,
+    needs_resolve,
     normalize_action,
 )
 from gedit_lsp.navigation import default_buffer_for_uri, default_load_uri
 from gedit_lsp.utf16 import text_iter_to_utf16
-
-# Note: `needs_resolve` and `apply_workspace_edit` are imported by
-# Task 5b when `_commit` is implemented; ruff flags them as F401 here.
+from gedit_lsp.workspace_edit import apply_workspace_edit
 
 if TYPE_CHECKING:
     from gi.repository import Gedit  # type: ignore[attr-defined]
@@ -141,5 +140,64 @@ class CodeActionController:
     def _commit(
         self, action: NormalizedAction, server: LanguageServer,
     ) -> None:
-        # Resolve / execute logic added in Task 5b/5c.
-        raise NotImplementedError("commit flow added in next sub-task")
+        if needs_resolve(action):
+            def on_resolved(msg: dict[str, Any]) -> None:
+                statusbar = self._window.get_statusbar()
+                if msg.get("error"):
+                    logger.info("code-action: resolve error %r", msg.get("error"))
+                    statusbar.push(0, "LSP: could not resolve action")
+                    return
+                resolved_raw = msg.get("result") or {}
+                resolved = normalize_action(resolved_raw)
+                if resolved is None:
+                    statusbar.push(0, "LSP: could not resolve action")
+                    return
+                self._execute(resolved, server)
+
+            # Pass the original action (with data) for the server to
+            # complete. Use the raw shape; LSP expects the same fields
+            # we received from textDocument/codeAction.
+            raw = {
+                "title": action["title"],
+                "kind": action["kind"],
+                "data": action["data"],
+            }
+            server._send_request("codeAction/resolve", raw, on_resolved)
+            return
+        self._execute(action, server)
+
+    def _execute(
+        self, action: NormalizedAction, server: LanguageServer,
+    ) -> None:
+        statusbar = self._window.get_statusbar()
+        has_edit = action["edit"] is not None
+        has_command = action["command"] is not None
+
+        applied: list[str] = []
+        failed: list[str] = []
+
+        if has_edit:
+            try:
+                applied, failed = apply_workspace_edit(
+                    action["edit"],
+                    buffer_for_uri=lambda u: self._buffer_for_uri(self._window, u),
+                )
+            except RuntimeError as exc:
+                logger.info("code-action: window closed mid-apply (%r)", exc)
+                return
+
+        if has_command:
+            cmd = action["command"]
+            # Per spec it's a request; in practice servers return null.
+            # Fire with a no-op callback for spec correctness.
+            server._send_request(
+                "workspace/executeCommand", cmd, lambda _msg: None,
+            )
+
+        if applied or has_command:
+            statusbar.push(0, f"LSP: applied {action['title']}")
+        elif failed:
+            statusbar.push(0,
+                f"LSP: applied {len(applied)} file(s); {len(failed)} failed (see log)")
+        else:
+            statusbar.push(0, "LSP: nothing to apply")
