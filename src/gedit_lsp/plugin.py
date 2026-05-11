@@ -96,12 +96,14 @@ def _ensure_globals() -> tuple[Config, ServerRegistry]:
             log_prefix: str,
             on_exit: Any,
             on_stderr_line: Callable[[str], None] | None = None,
+            cwd: str | None = None,
         ) -> RpcClient:
             return RpcClient(
                 command=command,
                 log_prefix=log_prefix,
                 on_exit=on_exit,
                 on_stderr_line=on_stderr_line,
+                cwd=cwd,
             )
 
         _registry = ServerRegistry(config=_config, transport_factory=factory)
