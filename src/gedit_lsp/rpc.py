@@ -111,6 +111,7 @@ class RpcClient:
         on_notification_default: Callable[[dict[str, Any]], None] | None = None,
         on_exit: Callable[[int], None] | None = None,
         on_stderr_line: Callable[[str], None] | None = None,
+        cwd: str | None = None,
     ) -> None:
         self._command = command
         self._log_prefix = log_prefix
@@ -118,6 +119,7 @@ class RpcClient:
         self._on_notification_default = on_notification_default
         self._on_exit = on_exit
         self._on_stderr_line = on_stderr_line
+        self._cwd = cwd
 
         self._proc: Gio.Subprocess | None = None
         self._stdout: Gio.DataInputStream | None = None
@@ -135,7 +137,17 @@ class RpcClient:
             | Gio.SubprocessFlags.STDOUT_PIPE
             | Gio.SubprocessFlags.STDERR_PIPE
         )
-        self._proc = Gio.Subprocess.new(self._command, flags)
+        # SubprocessLauncher (vs Gio.Subprocess.new) gives us set_cwd so the
+        # server inherits the workspace root rather than gedit's launch dir.
+        # Real-world consequence: pylsp's mypy/flake8/pylint can resolve
+        # imports rooted at the project; gopls finds go.mod; clangd resolves
+        # compile_commands.json. Without this, single-file diagnostics that
+        # need cross-file context misfire (e.g. "Returning Any" when the
+        # imported symbol's type is in another file).
+        launcher = Gio.SubprocessLauncher.new(flags)
+        if self._cwd is not None:
+            launcher.set_cwd(self._cwd)
+        self._proc = launcher.spawnv(self._command)
         self._stdin = self._proc.get_stdin_pipe()
         stdout_pipe = self._proc.get_stdout_pipe()
         assert stdout_pipe is not None  # STDOUT_PIPE flag was set

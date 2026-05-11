@@ -60,12 +60,14 @@ def test_diagnostics_listener_receives_notifications(
         log_prefix: str,
         on_subprocess_exit: Any,
         on_stderr_line: Any = None,
+        cwd: str | None = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
             log_prefix=log_prefix,
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
+            cwd=cwd,
         )
 
     server = LanguageServer(

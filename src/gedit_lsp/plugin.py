@@ -44,6 +44,7 @@ from gedit_lsp.features.formatting import FormattingController
 from gedit_lsp.features.hover import HoverController
 from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.features.references import ReferencesController
+from gedit_lsp.features.rename import RenameController
 from gedit_lsp.features.signature_help import SignatureHelpController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
@@ -95,12 +96,14 @@ def _ensure_globals() -> tuple[Config, ServerRegistry]:
             log_prefix: str,
             on_exit: Any,
             on_stderr_line: Callable[[str], None] | None = None,
+            cwd: str | None = None,
         ) -> RpcClient:
             return RpcClient(
                 command=command,
                 log_prefix=log_prefix,
                 on_exit=on_exit,
                 on_stderr_line=on_stderr_line,
+                cwd=cwd,
             )
 
         _registry = ServerRegistry(config=_config, transport_factory=factory)
@@ -163,6 +166,7 @@ class GeditLspPlugin(
         self._references_ctrl = ReferencesController(
             window=win, panel=self._references_panel,
         )
+        self._rename_ctrl = RenameController(window=win)
         self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
@@ -174,6 +178,7 @@ class GeditLspPlugin(
             ("lsp-goto-definition", "goto-definition", self._on_definition_activate),
             ("lsp-go-back", "go-back", self._on_go_back_activate),
             ("lsp-references", "references", self._on_references_activate),
+            ("lsp-rename", "rename", self._on_rename_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
             ("lsp-format", "format", self._on_format_activate),
         ]:
@@ -244,6 +249,7 @@ class GeditLspPlugin(
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
             self._diag_panel.clear_for_uri(bridge.uri)
+            self._revert_pylsp_view_if_dirty(doc, bridge)
             bridge.detach()
         self._servers.pop(doc, None)
         self._diagnostics_ctrls.pop(doc, None)
@@ -256,6 +262,41 @@ class GeditLspPlugin(
         if sig_ctrl is not None:
             sig_ctrl.dispose()
         self._formatting_ctrls.pop(doc, None)
+
+    def _revert_pylsp_view_if_dirty(
+        self, doc: Gedit.Document, bridge: DocumentBridge
+    ) -> None:
+        """If `doc` is being closed with unsaved edits, push pylsp's view of
+        the file back to the on-disk content before the impending didClose,
+        then trigger a documentSymbol request so the server actually
+        re-parses (otherwise its parser cache stays pinned at the in-memory
+        edits and project-wide queries — notably rename — miss references
+        in this file). See `project_pylsp_jedi_rename_caveats`.
+        """
+        if not doc.get_modified():
+            return
+        server = self._servers.get(doc)
+        if server is None:
+            return
+        path = Gio.File.new_for_uri(bridge.uri).get_path()
+        if path is None:
+            return
+        try:
+            disk_text = Path(path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.info("revert-on-close: cannot read %s: %r", bridge.uri, exc)
+            return
+        if disk_text == bridge._text:
+            return
+        bridge.revert_to_disk(disk_text)
+        # Fire-and-forget documentSymbol — its only purpose is to make
+        # pylsp call jedi_script() on the now-disk-content version, which
+        # is what evicts the stale entry from parso's parser cache.
+        server._send_request(
+            "textDocument/documentSymbol",
+            {"textDocument": {"uri": bridge.uri}},
+            lambda _resp: None,
+        )
 
     def _attach_popup_menu(self, view: Any) -> None:
         if view is None or view in self._popup_handlers:
@@ -559,6 +600,28 @@ class GeditLspPlugin(
             return
         logger.info("references: triggering, server.state=%s", server.state)
         self._references_ctrl.trigger(
+            server, bridge.uri, bridge.flush_pending_change,
+        )
+
+    def _on_rename_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        logger.info("rename action invoked")
+        view = self.window.get_active_view()
+        if view is None:
+            logger.info("rename: no active view")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            logger.info(
+                "rename: doc not bridged (bridge=%s server=%s)",
+                bridge, server,
+            )
+            return
+        logger.info("rename: triggering, server.state=%s", server.state)
+        self._rename_ctrl.trigger(
             server, bridge.uri, bridge.flush_pending_change,
         )
 

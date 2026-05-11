@@ -304,3 +304,34 @@ def test_transport_factory_receives_on_stderr_line(transport: FakeTransport) -> 
     assert on_stderr_line is not None
     on_stderr_line("warning: something happened")
     assert "warning: something happened" in server.recent_stderr()
+
+
+def test_transport_factory_receives_cwd_equal_to_root_path(
+    transport: FakeTransport,
+) -> None:
+    """LanguageServer must pass root_path as cwd to the transport factory.
+
+    Without this, the LSP subprocess inherits gedit's launch dir and tools
+    that use cwd for project discovery (pylsp's mypy import resolution,
+    gopls' go.mod lookup, clangd's compile_commands.json) misfire.
+
+    Mutation invariant: removing `cwd=self.root_path` from
+    `_spawn_and_initialize` makes this assertion fail.
+    """
+    captured: dict[str, Any] = {}
+
+    def factory(*args: Any, **kwargs: Any) -> FakeTransport:
+        captured["kwargs"] = kwargs
+        return transport
+
+    server = LanguageServer(
+        language_id="python",
+        root_path="/tmp/some/workspace/root",
+        command=["pylsp"],
+        initialization_options=None,
+        transport_factory=factory,
+        backoff_schedule=[1],
+        max_restart_attempts=1,
+    )
+    server.attach_buffer("file:///tmp/some/workspace/root/a.py")
+    assert captured["kwargs"].get("cwd") == "/tmp/some/workspace/root"

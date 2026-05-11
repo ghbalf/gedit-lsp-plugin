@@ -48,12 +48,14 @@ def registry(cfg: Config) -> ServerRegistry:
         log_prefix: str,
         on_exit: Callable[[int], None],
         on_stderr_line: Callable[[str], None] | None = None,
+        cwd: str | None = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
             log_prefix=log_prefix,
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
+            cwd=cwd,
         )
 
     return ServerRegistry(config=cfg, transport_factory=factory)

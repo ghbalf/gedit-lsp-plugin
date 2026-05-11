@@ -33,3 +33,9 @@ def test_menu_items_includes_find_references() -> None:
     the win.lsp-references action so users without the keyboard accel
     can still discover the feature."""
     assert ("Find References", "lsp-references") in popup_menu.MENU_ITEMS
+
+
+def test_menu_items_includes_rename_symbol() -> None:
+    """Discoverability: right-click → LSP → Rename Symbol must surface
+    the win.lsp-rename action for users without the F2 accel."""
+    assert ("Rename Symbol", "lsp-rename") in popup_menu.MENU_ITEMS

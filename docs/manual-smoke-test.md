@@ -50,6 +50,73 @@ performs the action, ticks the box.
       2 s, the *LSP Outline* side panel shows `Greeter > hello, goodbye`.
 - [ ] Click `goodbye` in the panel → cursor jumps to the method.
 
+## Rename
+
+Fixture: `tests/fixtures/projects/python_rename/` (lib.py + app.py +
+utils.py + pyproject.toml). Open **only `app.py`** before each test —
+lib.py and utils.py should be closed so the multi-file load path is
+exercised.
+
+> **pylsp + jedi caveat:** jedi's rename is permissive — it accepts
+> any identifier the cursor sits on, including stdlib builtins
+> (`print`, etc.). Refusal is *server-side* and only `pylsp-rope`
+> would gate that, but rope_rename is broken on pylsp 1.10 (see the
+> `project_pylsp_jedi_rename_caveats` memory).
+>
+> Cross-file rename works for closed files: jedi walks the project
+> filesystem rooted via `pyproject.toml`. The plugin's
+> `_revert_pylsp_view_if_dirty` (added 2026-05-11) handles the
+> previously-broken case where closing a dirty tab pinned parso's
+> parser cache at the rename content — repeat-rename now works
+> regardless of whether you saved the auto-opened tabs first.
+>
+> Between scenarios: `git restore tests/fixtures/projects/python_rename/`
+> on disk; in each open tab File → Revert (or close without saving —
+> the workaround keeps pylsp's view consistent with disk either way).
+
+- [ ] Open `tests/fixtures/projects/python_rename/app.py`. Cursor on
+      `compute_total` (the import on line 27 *or* either call site).
+      Press **F2** → popover anchored at the cursor, pre-filled with
+      `compute_total`, text already selected.
+- [ ] Type `compute_grand_total`, press **Enter**. Within ~1 s:
+      lib.py and utils.py auto-open as new tabs marked dirty; all
+      occurrences of `compute_total` are renamed across all three
+      files; statusbar shows `LSP: renamed 3 file(s)`.
+- [ ] **Discard** in-place: `git restore tests/fixtures/projects/python_rename/`,
+      then either File → Revert in every open tab, OR close lib.py +
+      utils.py without saving and Ctrl+Z app.py. Both paths must yield
+      a successful 3-file rename on the next F2 — the
+      `_revert_pylsp_view_if_dirty` workaround keeps pylsp's parso
+      cache aligned with disk on close.
+- [ ] Cursor on `Calculator` (the class import or instantiation in
+      `stateful_demo`). Press **F2** → popover with `Calculator`
+      selected. Type `Adder`, Enter → app.py + lib.py renamed;
+      statusbar `LSP: renamed 2 file(s)`. Discard as above.
+- [ ] Cursor on `print` (a stdlib builtin). Press **F2** → popover
+      appears pre-filled with `print` (jedi accepts builtins). Press
+      **Escape** to dismiss without committing. *Caveat:* if you do
+      commit a new name here, pylsp will rename the in-file references
+      only — it has no idea `print` is a builtin. With `pylsp-rope`
+      installed instead of jedi, this would be refused server-side
+      with `LSP: cannot rename symbol here`.
+- [ ] Cursor inside a string literal or whitespace (no identifier).
+      Press **F2** → statusbar shows `LSP: cannot rename symbol here`
+      and no popover appears (pylsp's prepareRename returned null;
+      controller honours the refusal). Verify `plugin.log` contains
+      `rename: prepareRename returned null — refused`.
+- [ ] Press **F2** on `compute_total`, then **Escape**. Popover
+      dismisses, no rename request fired. (No `LSP: renamed …` line
+      appears in the statusbar.)
+- [ ] Press **F2** on `compute_total`, then click outside the popover
+      (in the editor buffer). Popover dismisses cleanly; no rename
+      request.
+- [ ] **Discoverability:** right-click anywhere in the buffer → LSP
+      submenu shows **Rename Symbol** between **Find References** and
+      **Format**. Clicking it triggers the same flow as F2.
+- [ ] Verify `~/.local/state/gedit-lsp/plugin.log` contains
+      `registered action win.lsp-rename accels=['F2']` after activation
+      and a `rename action invoked` line per F2 press.
+
 ## Multi-window / multi-buffer
 
 - [ ] Open the same file in two gedit windows. Check
