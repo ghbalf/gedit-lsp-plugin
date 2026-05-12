@@ -27,9 +27,7 @@ if TYPE_CHECKING:
     from gi.repository import Gedit  # type: ignore[attr-defined]
 
     from gedit_lsp.server import LanguageServer
-    from gedit_lsp.ui.code_action_popover import (  # type: ignore[attr-defined]
-        CodeActionPopover,
-    )
+    from gedit_lsp.ui.code_action_popover import CodeActionPopover
 
 
 logger = logging.getLogger("gedit_lsp.code_action")
@@ -126,9 +124,7 @@ class CodeActionController:
 
         factory = self._popover_factory
         if factory is None:
-            from gedit_lsp.ui.code_action_popover import (  # type: ignore[attr-defined]
-                CodeActionPopover,
-            )
+            from gedit_lsp.ui.code_action_popover import CodeActionPopover
             factory = CodeActionPopover
         popover = factory(view)
         popover.show(
