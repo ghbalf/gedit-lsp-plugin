@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from gedit_lsp.navigation import default_buffer_for_uri, default_load_uri
 from gedit_lsp.utf16 import text_iter_to_utf16, utf16_to_text_iter
 from gedit_lsp.workspace_edit import apply_workspace_edit, derive_placeholder
 
@@ -31,60 +31,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("gedit_lsp.rename")
 
 
-def _default_load_uri(
-    window: Any, uri: str, on_loaded: Callable[[bool], None]
-) -> None:
-    """Open `uri` in `window` and call on_loaded(success) when ready.
-
-    Uses Gedit.commands_load_location (1-indexed line/column; we pass
-    1, 0 since rename doesn't care about cursor placement on the new
-    tab) and listens for the document's `loaded` signal.
-
-    Replaceable in unit tests via RenameController(load_uri=...).
-
-    Pre-flight check: a malformed WorkspaceEdit (e.g. pylsp's
-    rope_rename returns URIs rooted at "/" instead of the project
-    root) would otherwise spawn a ghost error tab. Skip the load and
-    report failure if the URI's path doesn't exist on disk.
-    """
-    import gi
-
-    gi.require_version("Gedit", "3.0")
-    from gi.repository import Gedit, Gio  # type: ignore[attr-defined]
-
-    gfile = Gio.File.new_for_uri(uri)
-    path = gfile.get_path()
-    if path is None or not Path(path).is_file():
-        logger.info("rename: refusing to load non-existent uri %s", uri)
-        on_loaded(False)
-        return
-    Gedit.commands_load_location(window, gfile, None, 1, 0)
-    tab = window.get_tab_from_location(gfile)
-    if tab is None:
-        on_loaded(False)
-        return
-    doc = tab.get_document()
-    handler_id: list[int] = []
-
-    def _on_loaded(_doc: Any) -> None:
-        if handler_id:
-            doc.disconnect(handler_id[0])
-        on_loaded(True)
-
-    handler_id.append(doc.connect("loaded", _on_loaded))
-
-
-def _default_buffer_for_uri(window: Any, uri: str) -> Any:
-    """Walk window.get_documents() for the matching URI. Replaceable
-    in unit tests via RenameController(buffer_for_uri=...).
-    """
-    for doc in window.get_documents():
-        gfile = doc.get_file().get_location()
-        if gfile is not None and gfile.get_uri() == uri:
-            return doc
-    return None
-
-
 class RenameController:
     def __init__(
         self,
@@ -93,8 +39,8 @@ class RenameController:
         popover_factory: Callable[[Any], RenamePopover] | None = None,
         load_uri: Callable[
             [Any, str, Callable[[bool], None]], None
-        ] = _default_load_uri,
-        buffer_for_uri: Callable[[Any, str], Any] = _default_buffer_for_uri,
+        ] = default_load_uri,
+        buffer_for_uri: Callable[[Any, str], Any] = default_buffer_for_uri,
     ) -> None:
         self._window = window
         self._popover_factory = popover_factory

@@ -75,6 +75,7 @@ works).
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
 | `references` | `<Shift>F4` | List all references to the symbol at the cursor in the bottom panel |
 | `rename` | `F2` | Rename the symbol at the cursor across every file the server's WorkspaceEdit touches (closed files are opened as tabs and left dirty for review) |
+| `code-action` | `<Shift>F2` | Show code actions at the cursor. A lightbulb in the gutter signals diagnostic lines whose actions are likely available; the keybind also works on lines with refactor-only actions where no diagnostic is present |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
 
@@ -86,8 +87,10 @@ Accelerator syntax is GTK's: `<Primary>` (Ctrl), `<Shift>`, `<Alt>`, function
 keys like `F12`, character keys like `k`, `bracketleft`, `period`. Avoid
 combinations that GtkSourceView's default binding set already claims —
 notably `<Primary>period` (emoji chooser), `<Alt>Left`/`<Alt>Right` (move
-word), `<Alt>Up`/`<Alt>Down` (move line). Those keystrokes are consumed by
-the view before the window's accel map sees them.
+word), `<Alt>Up`/`<Alt>Down` (move line), and `<Alt>Return` (consumed
+by GtkTextView before the window-level accel map sees it). Those
+keystrokes are consumed by the view before the window's accel map sees
+them.
 
 ## `tunables` — runtime knobs
 

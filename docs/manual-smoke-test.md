@@ -117,6 +117,35 @@ exercised.
       `registered action win.lsp-rename accels=['F2']` after activation
       and a `rename action invoked` line per F2 press.
 
+## Code actions
+
+After `./install.sh` and restarting gedit, open
+`tests/fixtures/projects/python_code_action/example.py` (or any
+Python file with an unused import) and verify:
+
+- [ ] **Lightbulb in gutter** — a lightbulb icon appears in the left
+      gutter on lines that have a diagnostic (e.g. the unused
+      `import os` line).
+- [ ] **Popup-menu entry** — right-clicking the buffer shows "Show
+      Code Actions" in the LSP submenu.
+- [ ] **Keybinding** — pressing `Shift+F2` on a diagnostic line
+      opens the picker popover.
+- [ ] **Picker contents** — the popover shows at least one action
+      (for the unused-import case, "Remove unused import" or similar
+      from `pylsp-ruff`).
+- [ ] **Apply** — selecting an action and pressing Enter applies the
+      edit (the import line is removed from the buffer).
+- [ ] **Statusbar** — after apply, the statusbar shows "LSP: applied
+      <title>".
+- [ ] **Bulb clears after fix** — once the diagnostic is resolved by
+      the apply, the lightbulb disappears from that line.
+- [ ] **Window-closed mid-popover** — closing the tab while the
+      popover is up does not crash gedit.
+- [ ] **Capability gate** — opening a file type whose server doesn't
+      advertise `codeActionProvider` shows no lightbulbs and the
+      keybind reports "server does not support code actions" in the
+      statusbar.
+
 ## Multi-window / multi-buffer
 
 - [ ] Open the same file in two gedit windows. Check

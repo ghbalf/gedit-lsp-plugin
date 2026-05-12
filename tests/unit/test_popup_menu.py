@@ -39,3 +39,9 @@ def test_menu_items_includes_rename_symbol() -> None:
     """Discoverability: right-click → LSP → Rename Symbol must surface
     the win.lsp-rename action for users without the F2 accel."""
     assert ("Rename Symbol", "lsp-rename") in popup_menu.MENU_ITEMS
+
+
+def test_menu_items_includes_show_code_actions() -> None:
+    """Discoverability: right-click → LSP → Show Code Actions must surface
+    the win.lsp-code-action action for users without the <Alt>Return accel."""
+    assert ("Show Code Actions", "lsp-code-action") in popup_menu.MENU_ITEMS

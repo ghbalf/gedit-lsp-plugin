@@ -32,6 +32,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Same gi pattern interleaves test imports, breaking isort grouping.
 "tests/**" = ["I001"]
+# Fixture for codeAction integration test deliberately contains an
+# unused import (`import os`) — that's the whole point of the file:
+# pylsp-ruff flags it (F401) and the test exercises the quickfix.
+"tests/fixtures/projects/python_code_action/example.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.10"
