@@ -150,6 +150,10 @@ class CodeActionController:
                 resolved_raw = msg.get("result") or {}
                 resolved = normalize_action(resolved_raw)
                 if resolved is None:
+                    logger.info(
+                        "code-action: resolve returned malformed result %r",
+                        resolved_raw,
+                    )
                     statusbar.push(0, "LSP: could not resolve action")
                     return
                 self._execute(resolved, server)
@@ -194,10 +198,14 @@ class CodeActionController:
                 "workspace/executeCommand", cmd, lambda _msg: None,
             )
 
-        if applied or has_command:
-            statusbar.push(0, f"LSP: applied {action['title']}")
-        elif failed:
-            statusbar.push(0,
-                f"LSP: applied {len(applied)} file(s); {len(failed)} failed (see log)")
+        if applied or has_command or failed:
+            if failed:
+                statusbar.push(
+                    0,
+                    f"LSP: applied {len(applied)} file(s); "
+                    f"{len(failed)} failed (see log)",
+                )
+            else:
+                statusbar.push(0, f"LSP: applied {action['title']}")
         else:
             statusbar.push(0, "LSP: nothing to apply")

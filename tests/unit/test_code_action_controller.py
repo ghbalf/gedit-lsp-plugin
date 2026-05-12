@@ -406,3 +406,68 @@ def test_commit_resolve_error_statusbar_no_apply(monkeypatch: pytest.MonkeyPatch
 
     pushed = [c.args[1] for c in statusbar.push.call_args_list]
     assert any("could not resolve" in m.lower() for m in pushed)
+
+
+def test_commit_resolve_malformed_result_statusbar_no_apply(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve returned a structurally-malformed action (no edit, no
+    command, no data) — normalize_action returns None and we surface
+    the same 'could not resolve' statusbar message we use on the
+    error path."""
+    server = FakeServer(capability=True)
+    statusbar = MagicMock()
+    view = _make_view_at_cursor()
+    window = _make_window(statusbar=statusbar, view=view)
+    applied: list = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (applied.append(edit), ([], []))[1],
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    _commit_via_popover(controller, server, {
+        "title": "Stub", "kind": "quickfix", "data": {"id": "x"},
+    })
+    resolve_cb = next(
+        cb for m, _, cb in server.requests if m == "codeAction/resolve"
+    )
+    # Server returns a valid response shape but the action body has
+    # no edit / command / data — normalize_action drops it.
+    resolve_cb({"result": {"title": "still-stub", "kind": "quickfix"}})
+
+    pushed = [c.args[1] for c in statusbar.push.call_args_list]
+    assert any("could not resolve" in m.lower() for m in pushed)
+    assert applied == []  # nothing was applied
+
+
+def test_commit_partial_failure_reports_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Edit touches two files; one succeeds, one fails. Statusbar must
+    report the partial failure counts, not silently swallow the failure."""
+    server = FakeServer(capability=True)
+    statusbar = MagicMock()
+    view = _make_view_at_cursor()
+    window = _make_window(statusbar=statusbar, view=view)
+
+    # apply_workspace_edit returns (applied=["a"], failed=["b"])
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (["file:///a.py"], ["file:///b.py"]),
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(window=window)
+
+    edit = {
+        "changes": {
+            "file:///a.py": [],
+            "file:///b.py": [],
+        }
+    }
+    _commit_via_popover(controller, server, {
+        "title": "Multi", "kind": "quickfix", "edit": edit,
+    })
+
+    pushed = [c.args[1] for c in statusbar.push.call_args_list]
+    # Must mention both counts — NOT just "applied {title}"
+    assert any("1 file" in m and "1 failed" in m for m in pushed), (
+        f"Expected partial-failure message; got: {pushed}"
+    )
