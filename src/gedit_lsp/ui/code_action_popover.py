@@ -111,7 +111,7 @@ class CodeActionPopover:
         cursor = buf.get_iter_at_mark(buf.get_insert())
         rect = self._view.get_iter_location(cursor)
         rect.x, rect.y = self._view.buffer_to_window_coords(
-            Gtk.TextWindowType.TEXT, rect.x, rect.y,
+            Gtk.TextWindowType.WIDGET, rect.x, rect.y,
         )
         popover.set_pointing_to(rect)
 
@@ -136,12 +136,17 @@ class CodeActionPopover:
         popover.connect("key-press-event", self._on_key_press)
         popover.connect("closed", self._on_popover_closed)
         popover.show_all()  # type: ignore[attr-defined]
+        popover.popup()
         self._popover = popover
-        # Initial keyboard focus on the first selectable row
-        if self._model.selected_index is not None:
-            row = self._row_widgets[self._model.selected_index]
-            listbox.select_row(row)
-            row.grab_focus()
+        # Pre-select the first enabled row in the *rendered* order
+        # (which is grouped by kind, not server order — so the model's
+        # `selected_index` would be misindexed).
+        for row in self._row_widgets:
+            row_action = getattr(row, "_gedit_lsp_action", None)
+            if row_action is not None and row_action.get("disabled_reason") is None:
+                listbox.select_row(row)
+                row.grab_focus()
+                break
 
     def _make_row(self, action: NormalizedAction) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
@@ -166,10 +171,15 @@ class CodeActionPopover:
         action = getattr(row, "_gedit_lsp_action", None)
         if action is None or action.get("disabled_reason"):
             return
+        # Capture and clear the callbacks before popdown so the
+        # subsequent 'closed' signal doesn't re-fire on_cancel.
+        commit_cb = self._on_commit
+        self._on_commit = None
+        self._on_cancel = None
         if self._popover is not None:
             self._popover.popdown()
-        if self._on_commit is not None:
-            self._on_commit(action)
+        if commit_cb is not None:
+            commit_cb(action)
 
     def _on_key_press(self, _popover: Gtk.Popover, event: Any) -> bool:
         if event.keyval == Gdk.KEY_Escape:
