@@ -173,39 +173,107 @@ class CodeActionController:
     def _execute(
         self, action: NormalizedAction, server: LanguageServer,
     ) -> None:
-        statusbar = self._window.get_statusbar()
-        has_edit = action["edit"] is not None
+        edit = action["edit"]
         has_command = action["command"] is not None
 
-        applied: list[str] = []
-        failed: list[str] = []
+        if edit is not None:
+            def after_edit(applied: list[str], failed: list[str]) -> None:
+                self._finish(applied, failed, has_command, action, server)
+            self._apply_with_load(edit, after_edit)
+        else:
+            self._finish([], [], has_command, action, server)
 
-        if has_edit:
+    def _apply_with_load(
+        self,
+        edit: dict[str, Any],
+        on_done: Callable[[list[str], list[str]], None],
+    ) -> None:
+        uris = self._collect_uris(edit)
+        to_load = [
+            u for u in uris
+            if self._buffer_for_uri(self._window, u) is None
+        ]
+
+        def do_apply() -> None:
             try:
                 applied, failed = apply_workspace_edit(
-                    action["edit"],
+                    edit,
                     buffer_for_uri=lambda u: self._buffer_for_uri(self._window, u),
                 )
             except RuntimeError as exc:
                 logger.info("code-action: window closed mid-apply (%r)", exc)
                 return
+            on_done(applied, failed)
 
+        if not to_load:
+            do_apply()
+            return
+
+        remaining = [len(to_load)]
+
+        def on_one_loaded(_uri: str, _ok: bool) -> None:
+            remaining[0] -= 1
+            if remaining[0] == 0:
+                do_apply()
+
+        def make_cb(u: str) -> Callable[[bool], None]:
+            def cb(ok: bool) -> None:
+                on_one_loaded(u, ok)
+            return cb
+
+        for u in to_load:
+            self._load_uri(self._window, u, make_cb(u))
+
+    @staticmethod
+    def _collect_uris(edit: Any) -> list[str]:
+        if not isinstance(edit, dict):
+            return []
+        uris: list[str] = []
+        document_changes = edit.get("documentChanges")
+        if isinstance(document_changes, list):
+            for entry in document_changes:
+                if isinstance(entry, dict):
+                    td = entry.get("textDocument")
+                    if isinstance(td, dict) and isinstance(td.get("uri"), str):
+                        uris.append(td["uri"])
+            return uris
+        changes = edit.get("changes")
+        if isinstance(changes, dict):
+            for uri in changes:
+                if isinstance(uri, str):
+                    uris.append(uri)
+        return uris
+
+    def _finish(
+        self,
+        applied: list[str],
+        failed: list[str],
+        has_command: bool,
+        action: NormalizedAction,
+        server: LanguageServer,
+    ) -> None:
+        try:
+            statusbar = self._window.get_statusbar()
+        except RuntimeError as exc:
+            logger.info("code-action: window closed at finish (%r)", exc)
+            return
         if has_command:
             cmd = action["command"]
-            # Per spec it's a request; in practice servers return null.
-            # Fire with a no-op callback for spec correctness.
+            assert cmd is not None  # has_command was checked
             server._send_request(
                 "workspace/executeCommand", cmd, lambda _msg: None,
             )
-
-        if applied or has_command or failed:
-            if failed:
-                statusbar.push(
-                    0,
-                    f"LSP: applied {len(applied)} file(s); "
-                    f"{len(failed)} failed (see log)",
-                )
+        try:
+            if applied or has_command or failed:
+                if failed:
+                    statusbar.push(
+                        0,
+                        f"LSP: applied {len(applied)} file(s); "
+                        f"{len(failed)} failed (see log)",
+                    )
+                else:
+                    statusbar.push(0, f"LSP: applied {action['title']}")
             else:
-                statusbar.push(0, f"LSP: applied {action['title']}")
-        else:
-            statusbar.push(0, "LSP: nothing to apply")
+                statusbar.push(0, "LSP: nothing to apply")
+        except RuntimeError as exc:
+            logger.info("code-action: window closed at statusbar (%r)", exc)

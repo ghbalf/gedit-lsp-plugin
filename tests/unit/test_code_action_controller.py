@@ -283,7 +283,10 @@ def test_commit_edit_only_applies_edit(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda edit, *, buffer_for_uri: (applied_edits.append(edit), ([], []))[1],
     )
     _patch_utf16(monkeypatch, line=0, char=0)
-    controller = CodeActionController(window=window)
+    controller = CodeActionController(
+        window=window,
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
 
     edit = {"changes": {"file:///a.py": []}}
     _commit_via_popover(controller, server, {
@@ -337,7 +340,10 @@ def test_commit_edit_and_command_edits_first_then_command(
     server._send_request = tracked_send  # type: ignore[method-assign]
 
     _patch_utf16(monkeypatch, line=0, char=0)
-    controller = CodeActionController(window=window)
+    controller = CodeActionController(
+        window=window,
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
 
     edit = {"changes": {"file:///a.py": []}}
     cmd = {"title": "After", "command": "do.thing", "arguments": []}
@@ -360,7 +366,10 @@ def test_commit_needs_resolve_fires_resolve_then_executes(
         lambda edit, *, buffer_for_uri: (applied.append(edit), ([], []))[1],
     )
     _patch_utf16(monkeypatch, line=0, char=0)
-    controller = CodeActionController(window=window)
+    controller = CodeActionController(
+        window=window,
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
 
     # Action with only `data` — needs_resolve True
     _commit_via_popover(controller, server, {
@@ -454,7 +463,10 @@ def test_commit_partial_failure_reports_counts(monkeypatch: pytest.MonkeyPatch) 
         lambda edit, *, buffer_for_uri: (["file:///a.py"], ["file:///b.py"]),
     )
     _patch_utf16(monkeypatch, line=0, char=0)
-    controller = CodeActionController(window=window)
+    controller = CodeActionController(
+        window=window,
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
 
     edit = {
         "changes": {
@@ -471,3 +483,119 @@ def test_commit_partial_failure_reports_counts(monkeypatch: pytest.MonkeyPatch) 
     assert any("1 file" in m and "1 failed" in m for m in pushed), (
         f"Expected partial-failure message; got: {pushed}"
     )
+
+
+def test_commit_multifile_edit_loads_closed_files_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+
+    apply_calls: list[Any] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (apply_calls.append(edit), ([], []))[1],
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+
+    # buffer_for_uri: a.py is open, b.py is closed
+    def buffer_for_uri(_win: Any, uri: str) -> Any:
+        return MagicMock() if uri == "file:///a.py" else None
+
+    loads: list[tuple[str, Any]] = []
+    def load_uri(_win: Any, uri: str, on_loaded: Any) -> None:
+        loads.append((uri, on_loaded))
+
+    controller = CodeActionController(
+        window=window,
+        load_uri=load_uri,
+        buffer_for_uri=buffer_for_uri,
+    )
+
+    edit = {
+        "changes": {
+            "file:///a.py": [],
+            "file:///b.py": [],
+        }
+    }
+    _commit_via_popover(controller, server, {
+        "title": "Multi", "kind": "quickfix", "edit": edit,
+    })
+
+    # apply not yet fired — waiting on b.py load
+    assert apply_calls == []
+    assert len(loads) == 1
+    assert loads[0][0] == "file:///b.py"
+
+    # Simulate load completion
+    loads[0][1](True)
+    assert apply_calls == [edit]
+
+
+def test_commit_multifile_edit_fires_apply_after_all_loads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    window = _make_window(view=view)
+
+    apply_calls: list[Any] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda edit, *, buffer_for_uri: (apply_calls.append(edit), ([], []))[1],
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+
+    def buffer_for_uri(_w: Any, _uri: str) -> Any:
+        return None  # everything closed
+
+    loads: list[tuple[str, Any]] = []
+    def load_uri(_w: Any, uri: str, on_loaded: Any) -> None:
+        loads.append((uri, on_loaded))
+
+    controller = CodeActionController(
+        window=window, load_uri=load_uri, buffer_for_uri=buffer_for_uri,
+    )
+
+    edit = {
+        "documentChanges": [
+            {"textDocument": {"uri": "file:///a.py"}, "edits": []},
+            {"textDocument": {"uri": "file:///b.py"}, "edits": []},
+        ]
+    }
+    _commit_via_popover(controller, server, {
+        "title": "Multi", "kind": "quickfix", "edit": edit,
+    })
+
+    assert len(loads) == 2
+    assert apply_calls == []
+    # Settle them out-of-order: b first, then a
+    loads[1][1](True)
+    assert apply_calls == []
+    loads[0][1](True)
+    assert apply_calls == [edit]
+
+
+def test_window_closed_during_apply_no_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = FakeServer(capability=True)
+    view = _make_view_at_cursor()
+    statusbar = MagicMock()
+    statusbar.push.side_effect = RuntimeError("destroyed")
+    window = _make_window(statusbar=statusbar, view=view)
+
+    monkeypatch.setattr(
+        "gedit_lsp.features.code_action.apply_workspace_edit",
+        lambda *_a, **_k: ([], []),
+    )
+    _patch_utf16(monkeypatch, line=0, char=0)
+    controller = CodeActionController(
+        window=window,
+        buffer_for_uri=lambda _w, _u: MagicMock(),
+    )
+
+    # Should not raise
+    _commit_via_popover(controller, server, {
+        "title": "Apply", "kind": "quickfix",
+        "edit": {"changes": {"file:///a.py": []}},
+    })
