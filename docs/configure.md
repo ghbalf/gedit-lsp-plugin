@@ -75,6 +75,7 @@ works).
 | `go-back` | `<Shift>F12` | Return to the previous cursor position |
 | `references` | `<Shift>F4` | List all references to the symbol at the cursor in the bottom panel |
 | `rename` | `F2` | Rename the symbol at the cursor across every file the server's WorkspaceEdit touches (closed files are opened as tabs and left dirty for review) |
+| `code-action` | `<Alt>Return` | Show code actions at the cursor. A lightbulb in the gutter signals diagnostic lines whose actions are likely available; the keybind also works on lines with refactor-only actions where no diagnostic is present |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
 
