@@ -35,7 +35,7 @@ DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
     "go-back":          ["<Shift>F12"],
     "references":       ["<Shift>F4"],
     "rename":           ["F2"],
-    "code-action":      ["<Alt>Return"],
+    "code-action":      ["<Shift>F2"],
     "show-server-logs": [],
     "format":           ["<Primary><Shift>i"],
 }

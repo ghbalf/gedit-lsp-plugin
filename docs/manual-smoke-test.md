@@ -128,7 +128,7 @@ Python file with an unused import) and verify:
       `import os` line).
 - [ ] **Popup-menu entry** — right-clicking the buffer shows "Show
       Code Actions" in the LSP submenu.
-- [ ] **Keybinding** — pressing `Alt+Return` on a diagnostic line
+- [ ] **Keybinding** — pressing `Shift+F2` on a diagnostic line
       opens the picker popover.
 - [ ] **Picker contents** — the popover shows at least one action
       (for the unused-import case, "Remove unused import" or similar

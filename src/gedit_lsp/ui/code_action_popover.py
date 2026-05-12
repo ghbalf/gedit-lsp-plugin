@@ -119,12 +119,13 @@ class CodeActionPopover:
         listbox = Gtk.ListBox()
         listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self._row_widgets = []
-        for group_name, group_actions in self._model.grouped_rows():
-            header = Gtk.Label(label=group_name)
-            header.set_xalign(0.0)
-            header.set_margin_start(6)
-            header.get_style_context().add_class("dim-label")
-            listbox.add(header)  # type: ignore[attr-defined]
+        # Iterate grouped output to preserve kind ordering (quickfix →
+        # refactor.* → source.*), but render each action as a single row.
+        # The `[kind.subkind]` badge in _make_row already conveys grouping;
+        # adding bare-Label group headers to a Gtk.ListBox would have GTK
+        # auto-wrap them as selectable rows, which is the bug that prompted
+        # this change.
+        for _group_name, group_actions in self._model.grouped_rows():
             for action in group_actions:
                 row = self._make_row(action)
                 listbox.add(row)  # type: ignore[attr-defined]

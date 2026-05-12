@@ -16,7 +16,7 @@
 | `textDocument/references` (Shift+F4; many → "LSP References" bottom panel) | ✓ |
 | `textDocument/rename` (F2; popover at cursor; multi-file apply, closed files opened as tabs) | ✓ |
 | `textDocument/prepareRename` (gates rename when server advertises it) | ✓ |
-| `textDocument/codeAction` (`<Alt>Return`; lightbulb in gutter on diagnostic lines; popover picker; edit + command apply) | ✓ |
+| `textDocument/codeAction` (Shift+F2; lightbulb in gutter on diagnostic lines; popover picker; edit + command apply) | ✓ |
 | `codeAction/resolve` (sent on commit when the chosen action has neither `edit` nor `command`) | ✓ |
 | `workspace/executeCommand` (sent for actions carrying a `command`) | ✓ |
 
