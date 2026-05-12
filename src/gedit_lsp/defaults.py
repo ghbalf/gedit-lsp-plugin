@@ -35,6 +35,7 @@ DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
     "go-back":          ["<Shift>F12"],
     "references":       ["<Shift>F4"],
     "rename":           ["F2"],
+    "code-action":      ["<Alt>Return"],
     "show-server-logs": [],
     "format":           ["<Primary><Shift>i"],
 }
@@ -59,7 +60,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "enabledFeatures": [
         "diagnostics", "hover", "definition", "outline",
         "completion", "signatureHelp", "formatting", "references",
-        "rename",
+        "rename", "codeAction",
     ],
     "severityIcons": {
         "error":   "dialog-error-symbolic",

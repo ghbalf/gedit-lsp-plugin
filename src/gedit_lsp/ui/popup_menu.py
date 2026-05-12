@@ -26,6 +26,7 @@ MENU_ITEMS: list[tuple[str, str]] = [
     ("Go Back",           "lsp-go-back"),
     ("Find References",   "lsp-references"),
     ("Rename Symbol",     "lsp-rename"),
+    ("Show Code Actions", "lsp-code-action"),
     ("Format",            "lsp-format"),
     ("Show Server Logs…", "lsp-show-server-logs"),
 ]
