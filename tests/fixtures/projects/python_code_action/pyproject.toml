@@ -1,0 +1,8 @@
+# Marks this directory as a Python project root for pylsp's
+# project-detection (so pylsp + pylsp-ruff treat example.py as a
+# workspace). The plugin's DEFAULT_ROOT_MARKERS includes pyproject.toml.
+[project]
+name = "python_code_action_fixture"
+version = "0.0.0"
+description = "Fixture for the textDocument/codeAction integration test."
+requires-python = ">=3.10"
