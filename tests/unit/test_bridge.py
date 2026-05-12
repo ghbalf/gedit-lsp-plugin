@@ -5,6 +5,7 @@ The bridge depends on a `LanguageServer` (we use a fake) and on a clock
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from gedit_lsp.bridge import DocumentBridge, SyncKind
@@ -14,9 +15,26 @@ class FakeServer:
     def __init__(self) -> None:
         self.sent: list[dict[str, Any]] = []
         self.state = "READY"
+        self._diag_listeners: list[Callable[[dict[str, Any]], None]] = []
 
     def send_notification(self, method: str, params: dict[str, Any]) -> None:
         self.sent.append({"method": method, "params": params})
+
+    def add_diagnostics_listener(
+        self, callback: Callable[[dict[str, Any]], None]
+    ) -> Callable[[], None]:
+        self._diag_listeners.append(callback)
+
+        def dispose() -> None:
+            if callback in self._diag_listeners:
+                self._diag_listeners.remove(callback)
+
+        return dispose
+
+    def publish_diagnostics(self, params: dict[str, Any]) -> None:
+        """Test helper: fan out to registered listeners."""
+        for cb in list(self._diag_listeners):
+            cb(params)
 
 
 class ManualClock:
@@ -295,6 +313,96 @@ def test_revert_to_disk_then_detach_sends_didchange_then_didclose() -> None:
     bridge.detach()
     methods = [s["method"] for s in server.sent]
     assert methods == ["textDocument/didChange", "textDocument/didClose"]
+
+
+def test_latest_diagnostics_for_returns_empty_when_unseen() -> None:
+    """No publishDiagnostics yet for this URI → empty list (not None)."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    assert bridge.latest_diagnostics_for("file:///x.py") == []
+    assert bridge.latest_diagnostics_for("file:///never-seen.py") == []
+
+
+def test_latest_diagnostics_for_records_recent_publish() -> None:
+    """Bridge subscribes on attach(); the most recent publishDiagnostics for
+    each URI is retained and returned by latest_diagnostics_for."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    diag = {
+        "range": {"start": {"line": 0, "character": 0},
+                  "end":   {"line": 0, "character": 5}},
+        "severity": 1, "message": "boom",
+    }
+    server.publish_diagnostics({"uri": "file:///x.py", "diagnostics": [diag]})
+    assert bridge.latest_diagnostics_for("file:///x.py") == [diag]
+
+
+def test_latest_diagnostics_for_tracks_multiple_uris_independently() -> None:
+    """Cross-file diagnostics (e.g. pylsp project-wide) populate per-URI."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///a.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    d_a = {"range": {"start": {"line": 1, "character": 0},
+                     "end":   {"line": 1, "character": 1}},
+           "message": "a"}
+    d_b = {"range": {"start": {"line": 2, "character": 0},
+                     "end":   {"line": 2, "character": 1}},
+           "message": "b"}
+    server.publish_diagnostics({"uri": "file:///a.py", "diagnostics": [d_a]})
+    server.publish_diagnostics({"uri": "file:///b.py", "diagnostics": [d_b]})
+    assert bridge.latest_diagnostics_for("file:///a.py") == [d_a]
+    assert bridge.latest_diagnostics_for("file:///b.py") == [d_b]
+
+
+def test_latest_diagnostics_for_replaces_on_republish() -> None:
+    """publishDiagnostics is authoritative; new payload replaces the old."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    first = {"range": {"start": {"line": 0, "character": 0},
+                       "end":   {"line": 0, "character": 1}},
+             "message": "first"}
+    second = {"range": {"start": {"line": 5, "character": 0},
+                        "end":   {"line": 5, "character": 1}},
+              "message": "second"}
+    server.publish_diagnostics({"uri": "file:///x.py", "diagnostics": [first]})
+    server.publish_diagnostics({"uri": "file:///x.py", "diagnostics": [second]})
+    # Empty list also replaces (server cleared the diagnostics).
+    assert bridge.latest_diagnostics_for("file:///x.py") == [second]
+    server.publish_diagnostics({"uri": "file:///x.py", "diagnostics": []})
+    assert bridge.latest_diagnostics_for("file:///x.py") == []
+
+
+def test_diagnostics_listener_disposed_on_detach() -> None:
+    """Bridge unsubscribes on detach() — no late updates after close."""
+    server = FakeServer()
+    clock = ManualClock()
+    bridge = DocumentBridge(
+        uri="file:///x.py", language_id="python", text="",
+        server=server, clock=clock, debounce_ms=150,
+    )
+    bridge.attach()
+    assert len(server._diag_listeners) == 1
+    bridge.detach()
+    assert server._diag_listeners == []
 
 
 def test_none_sync_kind_skips_didchange() -> None:

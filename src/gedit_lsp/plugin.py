@@ -37,6 +37,7 @@ from gi.repository import (  # type: ignore[attr-defined]
 
 from gedit_lsp.bridge import DocumentBridge, GLibClock, SyncKind, parse_sync_kind
 from gedit_lsp.config import Config
+from gedit_lsp.features.code_action import CodeActionController
 from gedit_lsp.features.completion import CompletionController
 from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
@@ -54,6 +55,7 @@ from gedit_lsp.server import LanguageServer, ServerState
 from gedit_lsp.ui import popup_menu, server_logs
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
+from gedit_lsp.ui.lightbulb_gutter import LightbulbGutter
 from gedit_lsp.ui.references_panel import ReferencesPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
 from gedit_lsp.utf16 import text_iter_to_utf16
@@ -136,6 +138,7 @@ class GeditLspPlugin(
         self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
         self._sighelp_ctrls: dict[Gedit.Document, SignatureHelpController] = {}
         self._formatting_ctrls: dict[Gedit.Document, FormattingController] = {}
+        self._lightbulb_gutters: dict[Gedit.Tab, LightbulbGutter] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
         self._popup_handlers: dict[Any, int] = {}
@@ -167,6 +170,7 @@ class GeditLspPlugin(
             window=win, panel=self._references_panel,
         )
         self._rename_ctrl = RenameController(window=win)
+        self._code_action_ctrl = CodeActionController(window=win)
         self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
@@ -179,6 +183,7 @@ class GeditLspPlugin(
             ("lsp-go-back", "go-back", self._on_go_back_activate),
             ("lsp-references", "references", self._on_references_activate),
             ("lsp-rename", "rename", self._on_rename_activate),
+            ("lsp-code-action", "code-action", self._on_code_action_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
             ("lsp-format", "format", self._on_format_activate),
         ]:
@@ -201,6 +206,9 @@ class GeditLspPlugin(
             with contextlib.suppress(TypeError, RuntimeError):
                 view.disconnect(hid)
         self._popup_handlers.clear()
+        for gutter in self._lightbulb_gutters.values():
+            gutter.dispose()
+        self._lightbulb_gutters.clear()
         for obj, hid in self._handlers:
             obj.disconnect(hid)
         self._handlers.clear()
@@ -245,6 +253,9 @@ class GeditLspPlugin(
         if hid is not None:
             with contextlib.suppress(TypeError, RuntimeError):
                 view.disconnect(hid)
+        gutter = self._lightbulb_gutters.pop(tab, None)
+        if gutter is not None:
+            gutter.dispose()
         doc = tab.get_document()
         bridge = self._bridges.pop(doc, None)
         if bridge is not None:
@@ -472,6 +483,44 @@ class GeditLspPlugin(
             (doc, doc.connect("saved", lambda d: self._on_doc_saved(d)))
         )
 
+        # Attach a LightbulbGutter for this view, if not already attached
+        # for its tab. (Idempotent: _attach_document may be re-entered via
+        # `loaded`/`saved`/`notify::language`.)
+        self._attach_lightbulb_gutter(doc, bridge, server, uri)
+
+    def _attach_lightbulb_gutter(
+        self,
+        doc: Gedit.Document,
+        bridge: DocumentBridge,
+        server: LanguageServer,
+        uri: str,
+    ) -> None:
+        gfile = doc.get_file().get_location()
+        if gfile is None:
+            return
+        tab = self.window.get_tab_from_location(gfile)
+        if tab is None:
+            logger.info("lightbulb: no tab for doc; skipping gutter attach")
+            return
+        if tab in self._lightbulb_gutters:
+            return
+        view = tab.get_view()
+        if view is None:
+            return
+
+        def on_activate(line: int) -> None:
+            self._code_action_ctrl.trigger(
+                server,
+                uri,
+                bridge.flush_pending_change,
+                diagnostics_for_uri=bridge.latest_diagnostics_for,
+                cursor_line=line,
+            )
+
+        self._lightbulb_gutters[tab] = LightbulbGutter(
+            view=view, server=server, uri=uri, on_activate=on_activate,
+        )
+
     def _on_buffer_insert_text(
         self,
         buf: Gtk.TextBuffer,
@@ -623,6 +672,31 @@ class GeditLspPlugin(
         logger.info("rename: triggering, server.state=%s", server.state)
         self._rename_ctrl.trigger(
             server, bridge.uri, bridge.flush_pending_change,
+        )
+
+    def _on_code_action_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        logger.info("code-action action invoked")
+        view = self.window.get_active_view()
+        if view is None:
+            logger.info("code-action: no active view")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            logger.info(
+                "code-action: doc not bridged (bridge=%s server=%s)",
+                bridge, server,
+            )
+            return
+        logger.info("code-action: triggering, server.state=%s", server.state)
+        self._code_action_ctrl.trigger(
+            server,
+            bridge.uri,
+            bridge.flush_pending_change,
+            diagnostics_for_uri=bridge.latest_diagnostics_for,
         )
 
     def _on_format_activate(

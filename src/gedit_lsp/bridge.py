@@ -8,6 +8,7 @@ abstraction so unit tests can drive time deterministically.
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from typing import Any, Protocol
 
 
@@ -52,6 +53,9 @@ def parse_sync_kind(capability: Any) -> SyncKind:
 
 class Server(Protocol):
     def send_notification(self, method: str, params: dict[str, Any]) -> None: ...
+    def add_diagnostics_listener(
+        self, callback: Callable[[dict[str, Any]], None]
+    ) -> Callable[[], None]: ...
 
 
 class Clock(Protocol):
@@ -80,6 +84,12 @@ class DocumentBridge:
         self._version = 0
         self._pending_handle: Any = None
         self._pending_events: list[dict[str, Any]] = []
+        # Last-seen publishDiagnostics list, keyed by URI. The bridge
+        # subscribes to the server on attach(); CodeActionController reads
+        # this via latest_diagnostics_for(uri) to assemble its request's
+        # `context.diagnostics`.
+        self._latest_diagnostics: dict[str, list[dict[str, Any]]] = {}
+        self._diagnostics_disposer: Callable[[], None] | None = None
 
     def attach(self) -> None:
         self._version = 1
@@ -94,6 +104,23 @@ class DocumentBridge:
                 }
             },
         )
+        self._diagnostics_disposer = self._server.add_diagnostics_listener(
+            self._on_diagnostics
+        )
+
+    def _on_diagnostics(self, params: dict[str, Any]) -> None:
+        """Stash the most recent publishDiagnostics for any URI we see."""
+        uri = params.get("uri")
+        if not isinstance(uri, str):
+            return
+        diags = params.get("diagnostics", [])
+        if not isinstance(diags, list):
+            return
+        self._latest_diagnostics[uri] = diags
+
+    def latest_diagnostics_for(self, uri: str) -> list[dict[str, Any]]:
+        """Return the most recent publishDiagnostics list for `uri`, or []."""
+        return self._latest_diagnostics.get(uri, [])
 
     def on_changed(self, new_text: str) -> None:
         """Full-document change entrypoint. Used by the Full-sync path; on
@@ -169,6 +196,9 @@ class DocumentBridge:
             self._clock.cancel(self._pending_handle)
             self._pending_handle = None
         self._pending_events.clear()
+        if self._diagnostics_disposer is not None:
+            self._diagnostics_disposer()
+            self._diagnostics_disposer = None
         self._server.send_notification(
             "textDocument/didClose",
             {"textDocument": {"uri": self.uri}},
