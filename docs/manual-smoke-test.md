@@ -175,6 +175,19 @@ Python file with an unused import) and verify:
       panels disappear. gedit doesn't crash.
 - [ ] Toggle on → state restored.
 
+## Mouse-hover (`feat/mouse-hover`)
+
+- [ ] Open a `.py` file; dwell pointer ~300 ms over an identifier → popover appears with the same content Ctrl+K would have shown.
+- [ ] Move pointer to whitespace → popover dismisses.
+- [ ] Move pointer *into* the popover → popover stays; scroll works if content is long.
+- [ ] Press any key → popover dismisses.
+- [ ] Click anywhere → popover dismisses.
+- [ ] Hover an unused-import line (pyflakes diagnostic) → popover shows hover content; server may include diagnostic-adjacent text.
+- [ ] Edit a file with `"mouseHover": false` set → no popover ever appears.
+- [ ] Edit a file with `"mouseHoverDwellMs": 1000` → popover delayed ~1 s.
+- [ ] Open a second file; close the first while pointer dwells over it → no crash, no stray popover.
+- [ ] Start drag-select with the mouse → no popover during the drag.
+
 ## Final
 
 - [ ] All boxes ticked.
