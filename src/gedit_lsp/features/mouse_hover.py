@@ -13,10 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 import gi
 
+gi.require_version("Gdk", "3.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
-from gi.repository import GLib, Gtk, GtkSource
+from gi.repository import Gdk, GLib, Gtk, GtkSource
 
 from gedit_lsp.utf16 import utf16_to_text_iter
 
@@ -139,10 +140,46 @@ class MouseHoverController:
                 self._popover.popdown()
             self._popover = None
 
-    # --- signal handlers (stubs; behavior added in later tasks) ---
+    # --- signal handlers ---
 
-    def _on_motion(self, _view: Any, _event: Any) -> bool:
+    def _on_motion(self, view: Any, event: Any) -> bool:
+        # Drag-suppress: any mouse button held → not dwell.
+        any_button_mask = (
+            Gdk.ModifierType.BUTTON1_MASK
+            | Gdk.ModifierType.BUTTON2_MASK
+            | Gdk.ModifierType.BUTTON3_MASK
+        )
+        if event.state & any_button_mask:
+            return False
+
+        self._cancel_timer()
+        self._request_token += 1
+        captured_token = self._request_token
+
+        bx, by = view.window_to_buffer_coords(
+            Gtk.TextWindowType.WIDGET, int(event.x), int(event.y)
+        )
+        over_text, buffer_iter = view.get_iter_at_location(bx, by)
+
+        if not over_text:
+            return False
+
+        # If popover is up and pointer is still inside the anchored range,
+        # leave it alone — stable hover, no re-fire.
+        if self._popover is not None and self._anchor_range is not None:
+            start, end = self._anchor_range
+            if start.get_offset() <= buffer_iter.get_offset() < end.get_offset():
+                return False
+
+        self._timer_id = GLib.timeout_add(
+            self._dwell_ms, self._on_dwell, captured_token, buffer_iter,
+        )
         return False
+
+    def _on_dwell(
+        self, _captured_token: int, _buffer_iter: Gtk.TextIter,
+    ) -> bool:
+        return False  # one-shot; Task 6 fills in the real implementation
 
     def _on_view_leave(self, _view: Any, _event: Any) -> bool:
         return False
