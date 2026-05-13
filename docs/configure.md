@@ -103,8 +103,7 @@ Per-key replacement; missing keys keep their default.
 | `outlineRefreshDebounceMs` | int | 2000 | Debounce window for outline refresh after edits |
 | `outlineInitialDelayMs` | int | 1000 | Delay before first outline request after document open |
 | `hoverSpinnerThresholdMs` | int | 300 | Show spinner if hover hasn't returned by this time |
-| `mouseHover` | bool | `true` | Enable pointer-dwell triggering for `textDocument/hover`. When `true`, hovering the mouse over a token for `mouseHoverDwellMs` milliseconds shows the same hover popover that Ctrl+K produces. Set to `false` to disable the feature entirely (no motion-notify handlers are attached). |
-| `mouseHoverDwellMs` | int | 300 | Milliseconds the pointer must dwell over a token before a `textDocument/hover` request is sent. Increase for slower-feeling hovers; decrease for snappier. 300 ms matches VS Code's default. Only meaningful when `mouseHover` is `true`. |
+| `mouseHoverDwellMs` | int | 300 | Milliseconds the pointer must dwell over a token before a `textDocument/hover` request is sent. Increase for slower-feeling hovers; decrease for snappier. 300 ms matches VS Code's default. Only meaningful when `"mouseHover"` is in `enabledFeatures`. |
 | `requestTimeoutMs` | int | 10000 | Per-request timeout |
 | `gotoHistoryMaxEntries` | int | 50 | Max entries in the cursor history (Alt+Left) |
 | `restartBackoffSchedule` | int[] | `[1,2,4,8,16,30]` | Backoff delays (seconds) on consecutive crashes |
@@ -116,7 +115,7 @@ Per-key replacement; missing keys keep their default.
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
 | `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
-| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references"]` | Which features run |
+| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references","rename","codeAction","mouseHover"]` | Which features run. Remove a name to disable that feature. Valid names include `diagnostics`, `hover`, `definition`, `outline`, `completion`, `signatureHelp`, `formatting`, `references`, `rename`, `codeAction`, `mouseHover`. |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
 | `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |
 | `severityUnderlineColor` | obj | (see defaults) | Per-severity squiggle color (CSS hex). Overrides the theme's red default for `Pango.Underline.ERROR`. Set a value to `""` to fall back to the theme color. |
