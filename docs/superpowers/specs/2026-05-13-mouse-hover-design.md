@@ -104,7 +104,7 @@ self._mouse_hover_ctrls: dict[Gedit.Document, MouseHoverController] = {}
 
 # In _attach_document, after `server` is up and capabilities are known:
 if (self._config.tunable("mouseHover")
-        and server.capabilities.get("hoverProvider")):
+        and server.capability("hoverProvider")):
     view = next(v for v in self.window.get_views()
                   if v.get_buffer() is doc)
     ctrl = MouseHoverController(
