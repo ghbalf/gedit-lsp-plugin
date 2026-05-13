@@ -1,9 +1,9 @@
-"""mouse_hover — pure helpers for textDocument/hover via pointer dwell.
+"""MouseHoverController — pointer-dwell triggering for textDocument/hover.
 
-This module currently contains only the two conversion helpers used to
-translate LSP positions and GTK TextIter positions into anchoring ranges.
-The `MouseHoverController` class (dwell timer, in-flight request tracking,
-popover rendering) will be added in subsequent tasks.
+Long-lived per-Gedit.Document object. Watches motion-notify-event,
+debounces dwell with a configurable timer, tracks an in-flight request
+token to drop stale responses, and renders results through the shared
+`build_hover_popover` helper.
 """
 from __future__ import annotations
 
@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 import gi
 
+gi.require_version("GLib", "2.0")
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
-from gi.repository import Gtk, GtkSource
+from gi.repository import GLib, Gtk, GtkSource
 
 from gedit_lsp.utf16 import utf16_to_text_iter
 
@@ -122,14 +123,12 @@ class MouseHoverController:
 
     def _cancel_timer(self) -> None:
         if self._timer_id is not None:
-            from gi.repository import GLib
             with contextlib.suppress(Exception):
                 GLib.source_remove(self._timer_id)
             self._timer_id = None
 
     def _cancel_grace_timer(self) -> None:
         if self._grace_timer_id is not None:
-            from gi.repository import GLib
             with contextlib.suppress(Exception):
                 GLib.source_remove(self._grace_timer_id)
             self._grace_timer_id = None
