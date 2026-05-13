@@ -43,6 +43,41 @@ def render_hover_contents(contents: Any) -> str:
     return ""
 
 
+def build_hover_popover(
+    view: Gtk.TextView, anchor_iter: Gtk.TextIter, text: str
+) -> Gtk.Popover:
+    """Build a popover anchored at `anchor_iter` showing `text`.
+
+    Used by both Ctrl+K (HoverController) and pointer-dwell
+    (MouseHoverController) so the rendered surface stays identical.
+    """
+    rect = view.get_iter_location(anchor_iter)
+    bx, by = view.buffer_to_window_coords(
+        Gtk.TextWindowType.WIDGET, rect.x, rect.y + rect.height
+    )
+    rect.x = bx
+    rect.y = by
+    rect.width = 1
+    rect.height = 1
+
+    popover = Gtk.Popover.new(view)  # type: ignore[call-arg]
+    popover.set_pointing_to(rect)
+    scrolled = Gtk.ScrolledWindow()
+    scrolled.set_min_content_height(120)
+    scrolled.set_min_content_width(400)
+    inner_buf = GtkSource.Buffer()
+    inner_buf.set_text(text)
+    inner_view = GtkSource.View.new_with_buffer(inner_buf)
+    inner_view.set_editable(False)
+    inner_view.set_cursor_visible(False)
+    inner_view.set_wrap_mode(Gtk.WrapMode.WORD)
+    inner_view.set_monospace(True)
+    scrolled.add(inner_view)  # type: ignore[attr-defined]
+    popover.add(scrolled)  # type: ignore[attr-defined]
+    popover.show_all()  # type: ignore[attr-defined]
+    return popover
+
+
 class HoverController:
     def __init__(
         self,
@@ -90,28 +125,5 @@ class HoverController:
     def _show_popover(self, anchor_iter: Gtk.TextIter, text: str) -> None:
         if self._popover is not None:
             self._popover.popdown()
-        rect = self._view.get_iter_location(anchor_iter)
-        bx, by = self._view.buffer_to_window_coords(
-            Gtk.TextWindowType.WIDGET, rect.x, rect.y + rect.height
-        )
-        rect.x = bx
-        rect.y = by
-        rect.width = 1
-        rect.height = 1
-
-        self._popover = Gtk.Popover.new(self._view)  # type: ignore[call-arg]
-        self._popover.set_pointing_to(rect)
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_min_content_height(120)
-        scrolled.set_min_content_width(400)
-        inner_buf = GtkSource.Buffer()
-        inner_buf.set_text(text)
-        inner_view = GtkSource.View.new_with_buffer(inner_buf)
-        inner_view.set_editable(False)
-        inner_view.set_cursor_visible(False)
-        inner_view.set_wrap_mode(Gtk.WrapMode.WORD)
-        inner_view.set_monospace(True)
-        scrolled.add(inner_view)  # type: ignore[attr-defined]
-        self._popover.add(scrolled)  # type: ignore[attr-defined]
-        self._popover.show_all()  # type: ignore[attr-defined]
+        self._popover = build_hover_popover(self._view, anchor_iter, text)
         self._popover.popup()
