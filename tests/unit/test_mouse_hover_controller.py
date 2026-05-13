@@ -216,3 +216,22 @@ def test_motion_increments_request_token(monkeypatch: Any) -> None:
     ctrl._on_motion(view, _motion_event())
 
     assert ctrl._request_token == tok_before + 1
+
+
+def test_motion_with_button_pressed_cancels_pending_timer(monkeypatch: Any) -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._timer_id = 99  # simulate pending dwell from pre-drag motion
+    removed: list[int] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.source_remove",
+        lambda src: removed.append(src),
+    )
+
+    from gi.repository import Gdk
+    btn_mask = Gdk.ModifierType.BUTTON1_MASK
+
+    ctrl._on_motion(view, _motion_event(state=btn_mask))
+
+    assert removed == [99]
+    assert ctrl._timer_id is None

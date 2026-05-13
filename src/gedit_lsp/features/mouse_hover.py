@@ -150,6 +150,7 @@ class MouseHoverController:
             | Gdk.ModifierType.BUTTON3_MASK
         )
         if event.state & any_button_mask:
+            self._cancel_timer()         # cancel any pending dwell before bailing
             return False
 
         self._cancel_timer()
@@ -172,12 +173,12 @@ class MouseHoverController:
                 return False
 
         self._timer_id = GLib.timeout_add(
-            self._dwell_ms, self._on_dwell, captured_token, buffer_iter,
+            self._dwell_ms, self._on_dwell, captured_token, bx, by,
         )
         return False
 
     def _on_dwell(
-        self, _captured_token: int, _buffer_iter: Gtk.TextIter,
+        self, _captured_token: int, _bx: int, _by: int,
     ) -> bool:
         return False  # one-shot; Task 6 fills in the real implementation
 
