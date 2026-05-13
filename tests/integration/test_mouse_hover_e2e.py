@@ -62,12 +62,6 @@ def test_mouse_hover_e2e_returns_response_and_anchors(
 
     # Build a controller against a fake view but the real buffer + server.
     view = MagicMock(spec=Gtk.TextView)
-    # The controller's _on_dwell calls view.get_iter_at_location(bx, by) to
-    # re-translate the cached coordinates. Anchor on "join" at line 1.
-    line_text = src.read_text().splitlines()[1]
-    char = line_text.find("join")
-    anchor = buf.get_iter_at_line_offset(1, char)
-    view.get_iter_at_location.return_value = (True, anchor)
 
     # build_hover_popover is widget-dependent; stub it so we don't need a
     # display to construct the popover. We assert the controller calls it
@@ -88,8 +82,15 @@ def test_mouse_hover_e2e_returns_response_and_anchors(
             dwell_ms=10, spinner_threshold_ms=300,
         )
 
-        # Drive a dwell directly with the current token and arbitrary coords
-        # (view.get_iter_at_location returns our chosen iter regardless).
+        # The controller's _on_dwell calls view.get_iter_at_location(bx, by) to
+        # re-translate the cached coordinates. Anchor on "join" at line 1.
+        line_text = src.read_text().splitlines()[1]
+        char = line_text.find("join")
+        anchor = buf.get_iter_at_line_offset(1, char)
+        view.get_iter_at_location.return_value = (True, anchor)
+
+        # bx/by are arbitrary; view.get_iter_at_location is stubbed above to
+        # return our chosen anchor iter regardless of the coords passed.
         ctrl._on_dwell(ctrl._request_token, 100, 50)
 
         # Pump the main loop until the popover gets built or 10s pass.
