@@ -45,11 +45,13 @@ def test_word_bounds_at_mid_word() -> None:
     assert buf.get_text(start, end, False) == "world"
 
 
-def test_word_bounds_at_on_whitespace_returns_single_char_range() -> None:
-    buf = _buffer_with("hello world\n")
-    cursor = buf.get_iter_at_line_offset(0, 5)  # the space
+def test_word_bounds_at_on_interior_whitespace_returns_single_char_range() -> None:
+    # Two spaces between "a" and "b"; cursor at offset 2 is on the SECOND space,
+    # which has inside_word() == False, ends_word() == False (no word just ended
+    # there), starts_word() == False. True interior whitespace — falls back.
+    buf = _buffer_with("a  b\n")
+    cursor = buf.get_iter_at_line_offset(0, 2)
     start, end = _word_bounds_at(cursor)
-    # Falls back: one-character range starting at the iter.
     assert end.get_offset() - start.get_offset() == 1
 
 
@@ -58,3 +60,22 @@ def test_word_bounds_at_start_of_buffer() -> None:
     cursor = buf.get_iter_at_line_offset(0, 0)
     start, end = _word_bounds_at(cursor)
     assert buf.get_text(start, end, False) == "hello"
+
+
+def test_word_bounds_at_trailing_edge_of_word_expands_to_word() -> None:
+    # Offset 5 of "hello world" is between 'o' and ' ': ends_word()==True for "hello".
+    # With the original (and correct) guard, the cursor at a word-boundary
+    # iter should expand to the word that just ended.
+    buf = _buffer_with("hello world\n")
+    cursor = buf.get_iter_at_line_offset(0, 5)
+    start, end = _word_bounds_at(cursor)
+    assert buf.get_text(start, end, False) == "hello"
+
+
+def test_word_bounds_at_trailing_edge_before_newline_expands_to_word() -> None:
+    # Offset 11 of "hello world\n" is between 'd' and '\n': ends_word()==True.
+    # Should anchor to "world", not to the newline.
+    buf = _buffer_with("hello world\n")
+    cursor = buf.get_iter_at_line_offset(0, 11)
+    start, end = _word_bounds_at(cursor)
+    assert buf.get_text(start, end, False) == "world"

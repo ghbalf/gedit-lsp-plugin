@@ -50,7 +50,7 @@ def _word_bounds_at(
     """
     start = cursor.copy()
     end = cursor.copy()
-    if start.inside_word():
+    if start.inside_word() or start.ends_word():
         if not start.starts_word():
             start.backward_word_start()
         if not end.ends_word():
