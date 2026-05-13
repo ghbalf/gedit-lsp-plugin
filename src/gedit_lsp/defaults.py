@@ -46,6 +46,8 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "outlineRefreshDebounceMs": 2000,
     "outlineInitialDelayMs": 1000,
     "hoverSpinnerThresholdMs": 300,
+    "mouseHover":              True,
+    "mouseHoverDwellMs":       300,
     "requestTimeoutMs": 10000,
     "gotoHistoryMaxEntries": 50,
     "restartBackoffSchedule": [1, 2, 4, 8, 16, 30],

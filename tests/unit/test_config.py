@@ -165,6 +165,12 @@ def test_keybindings_unknown_action_returns_empty(tmp_path: Path) -> None:
     assert cfg.keybindings_for("nope") == []
 
 
+def test_mouse_hover_defaults_present() -> None:
+    from gedit_lsp.defaults import DEFAULT_TUNABLES
+    assert DEFAULT_TUNABLES["mouseHover"] is True
+    assert DEFAULT_TUNABLES["mouseHoverDwellMs"] == 300
+
+
 def test_observer_called_on_reload(tmp_path: Path) -> None:
     user = tmp_path / "lsp-plugin.json"
     write_json(user, {})
