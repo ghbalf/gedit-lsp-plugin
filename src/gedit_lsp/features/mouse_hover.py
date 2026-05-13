@@ -240,16 +240,63 @@ class MouseHoverController:
         self._dismiss_popover()
         self._anchor_range = (start_iter, end_iter)
         self._popover = build_hover_popover(self._view, start_iter, text)
+        self._attach_popover_pointer_tracking(self._popover)
         self._popover.popup()
 
+    _GRACE_MS = 150
+
     def _on_view_leave(self, _view: Any, _event: Any) -> bool:
+        if self._popover is None:
+            return False
+        if self._pointer_in_popover:
+            return False
+        self._cancel_grace_timer()
+        self._grace_timer_id = GLib.timeout_add(
+            self._GRACE_MS, self._on_grace_expired,
+        )
         return False
 
+    def _on_grace_expired(self) -> bool:
+        self._grace_timer_id = None
+        if not self._pointer_in_popover:
+            self._dismiss_state()
+        return False  # one-shot
+
     def _on_focus_out(self, _view: Any, _event: Any) -> bool:
+        self._dismiss_state()
         return False
 
     def _on_key_press(self, _view: Any, _event: Any) -> bool:
+        self._dismiss_state()
         return False
 
     def _on_button_press(self, _view: Any, _event: Any) -> bool:
+        self._dismiss_state()
         return False
+
+    def _dismiss_state(self) -> None:
+        """Cancel pending work and dismiss the popover."""
+        self._cancel_timer()
+        self._cancel_grace_timer()
+        self._request_token += 1
+        self._dismiss_popover()
+        self._anchor_range = None
+        self._pointer_in_popover = False
+
+    def _attach_popover_pointer_tracking(self, popover: Gtk.Popover) -> None:
+        def on_enter(_w: Any, _e: Any) -> bool:
+            self._pointer_in_popover = True
+            self._cancel_grace_timer()
+            return False
+
+        def on_leave(_w: Any, _e: Any) -> bool:
+            self._pointer_in_popover = False
+            return False
+
+        with contextlib.suppress(Exception):
+            popover.connect("enter-notify-event", on_enter)
+            popover.connect("leave-notify-event", on_leave)
+            popover.connect(
+                "closed",
+                lambda _p: setattr(self, "_popover", None),
+            )

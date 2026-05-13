@@ -397,3 +397,76 @@ def test_response_without_server_range_falls_back_to_word_bounds(monkeypatch: An
     assert ctrl._anchor_range is not None
     start, end = ctrl._anchor_range
     assert buf.get_text(start, end, False) == "world"
+
+
+# ---------------------------------------------------------------------------
+# Dismissal handlers (Task 7)
+# ---------------------------------------------------------------------------
+
+
+def test_key_press_dismisses_popover() -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = MagicMock()
+    ctrl._anchor_range = (MagicMock(), MagicMock())
+
+    ctrl._on_key_press(view, MagicMock())
+
+    assert ctrl._popover is None
+    assert ctrl._anchor_range is None
+
+
+def test_button_press_dismisses_popover() -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    pop = MagicMock()
+    ctrl._popover = pop
+    ctrl._anchor_range = (MagicMock(), MagicMock())
+
+    ctrl._on_button_press(view, MagicMock())
+
+    pop.popdown.assert_called_once()
+    assert ctrl._popover is None
+
+
+def test_focus_out_dismisses_popover() -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = MagicMock()
+
+    ctrl._on_focus_out(view, MagicMock())
+
+    assert ctrl._popover is None
+
+
+def test_view_leave_with_pointer_in_popover_does_not_dismiss(monkeypatch: Any) -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    pop = MagicMock()
+    ctrl._popover = pop
+    ctrl._pointer_in_popover = True
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add", lambda *_a, **_kw: 99,
+    )
+
+    ctrl._on_view_leave(view, MagicMock())
+
+    pop.popdown.assert_not_called()
+    assert ctrl._popover is pop
+
+
+def test_view_leave_without_pointer_in_popover_schedules_grace_dismiss(monkeypatch: Any) -> None:
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = MagicMock()
+    scheduled: list[tuple[int, Any]] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add",
+        lambda ms, cb, *a, **kw: (scheduled.append((ms, cb)), 77)[1],
+    )
+
+    ctrl._on_view_leave(view, MagicMock())
+
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == 150  # grace_ms
+    assert ctrl._grace_timer_id == 77
