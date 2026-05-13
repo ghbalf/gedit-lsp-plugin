@@ -43,6 +43,10 @@ from gedit_lsp.features.definition import CursorHistory, DefinitionController
 from gedit_lsp.features.diagnostics import DiagnosticsController
 from gedit_lsp.features.formatting import FormattingController
 from gedit_lsp.features.hover import HoverController
+from gedit_lsp.features.mouse_hover import (
+    MouseHoverController,
+    should_attach_mouse_hover,
+)
 from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.features.references import ReferencesController
 from gedit_lsp.features.rename import RenameController
@@ -138,6 +142,7 @@ class GeditLspPlugin(
         self._completion_ctrls: dict[Gedit.Document, CompletionController] = {}
         self._sighelp_ctrls: dict[Gedit.Document, SignatureHelpController] = {}
         self._formatting_ctrls: dict[Gedit.Document, FormattingController] = {}
+        self._mouse_hover_ctrls: dict[Gedit.Document, MouseHoverController] = {}
         self._lightbulb_gutters: dict[Gedit.Tab, LightbulbGutter] = {}
         self._handlers: list[tuple[GObject.Object, int]] = []
         self._actions: list[Gio.SimpleAction] = []
@@ -223,6 +228,9 @@ class GeditLspPlugin(
         for sig_ctrl in self._sighelp_ctrls.values():
             sig_ctrl.dispose()
         self._sighelp_ctrls.clear()
+        for mh_ctrl in self._mouse_hover_ctrls.values():
+            mh_ctrl.dispose()
+        self._mouse_hover_ctrls.clear()
         # FormattingController has no GTK resources to dispose; clear the map.
         self._formatting_ctrls.clear()
         for disposers in self._listener_disposers.values():
@@ -272,6 +280,9 @@ class GeditLspPlugin(
         sig_ctrl = self._sighelp_ctrls.pop(doc, None)
         if sig_ctrl is not None:
             sig_ctrl.dispose()
+        mh_ctrl = self._mouse_hover_ctrls.pop(doc, None)
+        if mh_ctrl is not None:
+            mh_ctrl.dispose()
         self._formatting_ctrls.pop(doc, None)
 
     def _revert_pylsp_view_if_dirty(
@@ -434,6 +445,29 @@ class GeditLspPlugin(
                 logger.info("attached LSP signatureHelp controller for %s", path)
             else:
                 logger.info("skip signatureHelp attach: no view for doc")
+
+        # Wire mouse-hover controller if the tunable is on and server supports it.
+        if should_attach_mouse_hover(
+            tunable_enabled=self._config.tunable("mouseHover"),
+            hover_capability=server.capability("hoverProvider"),
+        ):
+            view = next(
+                (v for v in self.window.get_views() if v.get_buffer() is doc),
+                None,
+            )
+            if view is not None:
+                self._mouse_hover_ctrls[doc] = MouseHoverController(
+                    view=view,
+                    buffer=doc,
+                    server=server,
+                    uri=bridge.uri,
+                    dwell_ms=self._config.tunable("mouseHoverDwellMs"),
+                    spinner_threshold_ms=self._config.tunable(
+                        "hoverSpinnerThresholdMs",
+                    ),
+                )
+            else:
+                logger.info("skip mouse-hover attach: no view for doc")
 
         # Wire LSP formatting if enabled in config.
         if "formatting" in self._config.tunable("enabledFeatures"):

@@ -10,7 +10,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
 from gi.repository import Gtk, GtkSource
 
-from gedit_lsp.features.mouse_hover import MouseHoverController
+from gedit_lsp.features.mouse_hover import MouseHoverController, should_attach_mouse_hover
 
 
 class FakeServer:
@@ -505,3 +505,30 @@ def test_popover_leave_schedules_grace_dismiss(monkeypatch: Any) -> None:
     assert len(scheduled) == 1
     assert scheduled[0][0] == 150
     assert ctrl._grace_timer_id == 88
+
+
+# ---------------------------------------------------------------------------
+# Gate-helper (Task 8)
+# ---------------------------------------------------------------------------
+
+
+def test_should_attach_when_tunable_on_and_capability_present() -> None:
+    assert should_attach_mouse_hover(tunable_enabled=True, hover_capability=True)
+    assert should_attach_mouse_hover(
+        tunable_enabled=True, hover_capability={"workDoneProgress": False},
+    )
+
+
+def test_should_not_attach_when_tunable_off() -> None:
+    assert not should_attach_mouse_hover(
+        tunable_enabled=False, hover_capability=True,
+    )
+
+
+def test_should_not_attach_when_capability_missing() -> None:
+    assert not should_attach_mouse_hover(
+        tunable_enabled=True, hover_capability=None,
+    )
+    assert not should_attach_mouse_hover(
+        tunable_enabled=True, hover_capability=False,
+    )

@@ -62,6 +62,17 @@ def _word_bounds_at(
     return start, end
 
 
+def should_attach_mouse_hover(
+    *, tunable_enabled: bool, hover_capability: Any
+) -> bool:
+    """Return True iff a MouseHoverController should be attached.
+
+    Tunable on/off + server's `hoverProvider` capability (truthy = present).
+    Lifted out of plugin.py so it's unit-testable without the full plugin.
+    """
+    return bool(tunable_enabled) and bool(hover_capability)
+
+
 class MouseHoverController:
     def __init__(
         self,
