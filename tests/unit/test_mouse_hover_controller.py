@@ -235,3 +235,165 @@ def test_motion_with_button_pressed_cancels_pending_timer(monkeypatch: Any) -> N
 
     assert removed == [99]
     assert ctrl._timer_id is None
+
+
+# ---------------------------------------------------------------------------
+# Dwell + response (Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_dwell_sends_hover_request_with_position(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    buf = GtkSource.Buffer()
+    buf.set_text("hello world\n")
+    ctrl = _make_ctrl(view=view, server=server, buf=buf)
+    # When _on_dwell re-translates, return our chosen iter:
+    anchor = buf.get_iter_at_line_offset(0, 6)
+    view.get_iter_at_location.return_value = (True, anchor)
+
+    ctrl._on_dwell(ctrl._request_token, 100, 50)
+
+    assert len(server.requests) == 1
+    method, params, _cb = server.requests[0]
+    assert method == "textDocument/hover"
+    assert params["textDocument"]["uri"] == "file:///a.py"
+    assert params["position"] == {"line": 0, "character": 6}
+
+
+def test_stale_token_dwell_drops_request() -> None:
+    view = _make_view()
+    server = FakeServer()
+    ctrl = _make_ctrl(view=view, server=server)
+    stale = ctrl._request_token
+    ctrl._request_token += 1  # simulate cancel/dispose racing
+
+    ctrl._on_dwell(stale, 100, 50)
+
+    assert server.requests == []
+
+
+def test_dwell_over_whitespace_does_not_send_request() -> None:
+    """Even if motion scheduled this dwell, buffer state may have changed."""
+    view = _make_view()
+    server = FakeServer()
+    ctrl = _make_ctrl(view=view, server=server)
+    view.get_iter_at_location.return_value = (False, MagicMock())
+
+    ctrl._on_dwell(ctrl._request_token, 100, 50)
+
+    assert server.requests == []
+
+
+def test_response_with_token_match_builds_popover(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    buf = GtkSource.Buffer()
+    buf.set_text("hello world\n")
+    ctrl = _make_ctrl(view=view, server=server, buf=buf)
+    anchor = buf.get_iter_at_line_offset(0, 6)
+    built: list[tuple[Any, Any, str]] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.mouse_hover.build_hover_popover",
+        lambda v, it, txt: (built.append((v, it, txt)), MagicMock())[1],
+    )
+
+    ctrl._on_response(
+        ctrl._request_token, anchor,
+        {"result": {"contents": "type: str",
+                    "range": {"start": {"line": 0, "character": 6},
+                              "end":   {"line": 0, "character": 11}}}},
+    )
+
+    assert len(built) == 1
+    assert built[0][2] == "type: str"
+    assert ctrl._popover is not None
+    assert ctrl._anchor_range is not None
+
+
+def test_response_stale_token_does_not_build_popover(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    ctrl = _make_ctrl(view=view, server=server)
+    built: list[int] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.mouse_hover.build_hover_popover",
+        lambda *_a, **_kw: (built.append(1), MagicMock())[1],
+    )
+    buf = GtkSource.Buffer()
+    buf.set_text("hello\n")
+    anchor = buf.get_iter_at_line_offset(0, 0)
+    stale = ctrl._request_token
+    ctrl._request_token += 1
+
+    ctrl._on_response(
+        stale, anchor,
+        {"result": {"contents": "x"}},
+    )
+
+    assert built == []
+    assert ctrl._popover is None
+
+
+def test_response_empty_contents_does_not_build_popover(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    ctrl = _make_ctrl(view=view, server=server)
+    built: list[int] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.mouse_hover.build_hover_popover",
+        lambda *_a, **_kw: (built.append(1), MagicMock())[1],
+    )
+    buf = GtkSource.Buffer()
+    buf.set_text("hello\n")
+    anchor = buf.get_iter_at_line_offset(0, 0)
+
+    ctrl._on_response(
+        ctrl._request_token, anchor,
+        {"result": {"contents": "   \n  "}},
+    )
+
+    assert built == []
+
+
+def test_response_error_does_not_build_popover(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    ctrl = _make_ctrl(view=view, server=server)
+    built: list[int] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.mouse_hover.build_hover_popover",
+        lambda *_a, **_kw: (built.append(1), MagicMock())[1],
+    )
+    buf = GtkSource.Buffer()
+    buf.set_text("hello\n")
+    anchor = buf.get_iter_at_line_offset(0, 0)
+
+    ctrl._on_response(
+        ctrl._request_token, anchor,
+        {"error": {"code": -32603, "message": "boom"}},
+    )
+
+    assert built == []
+
+
+def test_response_without_server_range_falls_back_to_word_bounds(monkeypatch: Any) -> None:
+    view = _make_view()
+    server = FakeServer()
+    buf = GtkSource.Buffer()
+    buf.set_text("hello world\n")
+    ctrl = _make_ctrl(view=view, server=server, buf=buf)
+    anchor = buf.get_iter_at_line_offset(0, 8)  # inside "world"
+    monkeypatch.setattr(
+        "gedit_lsp.features.mouse_hover.build_hover_popover",
+        lambda *_a, **_kw: MagicMock(),
+    )
+
+    ctrl._on_response(
+        ctrl._request_token, anchor,
+        {"result": {"contents": "type: str"}},  # no range
+    )
+
+    assert ctrl._anchor_range is not None
+    start, end = ctrl._anchor_range
+    assert buf.get_text(start, end, False) == "world"

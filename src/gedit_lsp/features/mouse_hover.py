@@ -19,7 +19,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GtkSource", "300")
 from gi.repository import Gdk, GLib, Gtk, GtkSource
 
-from gedit_lsp.utf16 import utf16_to_text_iter
+from gedit_lsp.features.hover import build_hover_popover, render_hover_contents
+from gedit_lsp.utf16 import text_iter_to_utf16, utf16_to_text_iter
 
 if TYPE_CHECKING:
     from gedit_lsp.server import LanguageServer
@@ -178,9 +179,68 @@ class MouseHoverController:
         return False
 
     def _on_dwell(
-        self, _captured_token: int, _bx: int, _by: int,
+        self, captured_token: int, bx: int, by: int,
     ) -> bool:
-        return False  # one-shot; Task 6 fills in the real implementation
+        # If our token moved on (motion canceled us, dispose ran), drop silently.
+        if captured_token != self._request_token:
+            return False
+        self._timer_id = None
+
+        # Re-translate (bx, by) → live buffer iter. Buffer may have mutated
+        # since motion scheduled us, so we always read against the current state.
+        over_text, buffer_iter = self._view.get_iter_at_location(bx, by)
+        if not over_text:
+            return False
+
+        line, char = text_iter_to_utf16(buffer_iter)
+        logger.info(
+            "mouse-hover dwell: uri=%s pos=%d:%d token=%d",
+            self._uri, line, char, captured_token,
+        )
+
+        self._server._send_request(
+            "textDocument/hover",
+            {
+                "textDocument": {"uri": self._uri},
+                "position": {"line": line, "character": char},
+            },
+            lambda msg: self._on_response(captured_token, buffer_iter, msg),
+        )
+        return False
+
+    def _on_response(
+        self,
+        captured_token: int,
+        anchor_iter: Gtk.TextIter,
+        msg: dict[str, Any],
+    ) -> None:
+        if captured_token != self._request_token:
+            logger.debug("mouse-hover response: stale token %d", captured_token)
+            return
+        if msg.get("error"):
+            logger.info("mouse-hover response: error=%r", msg.get("error"))
+            return
+        result = msg.get("result")
+        if result is None:
+            return
+
+        text = render_hover_contents(result.get("contents"))
+        if not text.strip():
+            return
+
+        server_range = result.get("range")
+        if server_range:
+            start_iter, end_iter = _iters_from_lsp_range(
+                self._buffer, server_range,
+            )
+        else:
+            start_iter, end_iter = _word_bounds_at(anchor_iter)
+
+        # Pop any previous popover before replacing.
+        self._dismiss_popover()
+        self._anchor_range = (start_iter, end_iter)
+        self._popover = build_hover_popover(self._view, start_iter, text)
+        self._popover.popup()
 
     def _on_view_leave(self, _view: Any, _event: Any) -> bool:
         return False
