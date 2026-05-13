@@ -470,3 +470,38 @@ def test_view_leave_without_pointer_in_popover_schedules_grace_dismiss(monkeypat
     assert len(scheduled) == 1
     assert scheduled[0][0] == 150  # grace_ms
     assert ctrl._grace_timer_id == 77
+
+
+def test_popover_leave_schedules_grace_dismiss(monkeypatch: Any) -> None:
+    """Pointer leaving the popover (without view leave-notify) must arm dismiss."""
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+
+    # Construct a fake popover; capture its connect() callbacks so we can fire
+    # the leave-notify handler directly.
+    pop = MagicMock()
+    captured_handlers: dict[str, Any] = {}
+
+    def fake_connect(signal: str, cb: Any) -> int:
+        captured_handlers[signal] = cb
+        return len(captured_handlers)
+
+    pop.connect.side_effect = fake_connect
+
+    ctrl._popover = pop
+    ctrl._pointer_in_popover = True
+    ctrl._attach_popover_pointer_tracking(pop)
+
+    scheduled: list[tuple[int, Any]] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add",
+        lambda ms, cb, *a, **kw: (scheduled.append((ms, cb)), 88)[1],
+    )
+
+    # Fire the popover-side leave-notify-event callback directly.
+    captured_handlers["leave-notify-event"](pop, MagicMock())
+
+    assert ctrl._pointer_in_popover is False
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == 150
+    assert ctrl._grace_timer_id == 88

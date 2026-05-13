@@ -291,11 +291,19 @@ class MouseHoverController:
 
         def on_leave(_w: Any, _e: Any) -> bool:
             self._pointer_in_popover = False
+            # Pointer left the popover. Schedule a grace dismiss; on_enter
+            # cancels it if the pointer comes back in within the window.
+            self._cancel_grace_timer()
+            self._grace_timer_id = GLib.timeout_add(
+                self._GRACE_MS, self._on_grace_expired,
+            )
             return False
 
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(TypeError, RuntimeError):
             popover.connect("enter-notify-event", on_enter)
+        with contextlib.suppress(TypeError, RuntimeError):
             popover.connect("leave-notify-event", on_leave)
+        with contextlib.suppress(TypeError, RuntimeError):
             popover.connect(
                 "closed",
                 lambda _p: setattr(self, "_popover", None),
