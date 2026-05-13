@@ -532,3 +532,62 @@ def test_should_not_attach_when_capability_missing() -> None:
     assert not should_attach_mouse_hover(
         tunable_enabled=True, hover_capability=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Whitespace-motion grace dismiss (spec gap fix)
+# ---------------------------------------------------------------------------
+
+
+def test_motion_to_whitespace_with_popover_schedules_grace_dismiss(monkeypatch: Any) -> None:
+    """Moving to whitespace while a popover is showing arms the grace dismiss."""
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = MagicMock()
+    _stub_iter_at_location(view, over_text=False)
+    scheduled: list[tuple[int, Any]] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add",
+        lambda ms, cb, *a, **kw: (scheduled.append((ms, cb)), 55)[1],
+    )
+
+    ctrl._on_motion(view, _motion_event())
+
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == 150
+    assert ctrl._grace_timer_id == 55
+
+
+def test_motion_to_whitespace_without_popover_does_not_schedule_grace(monkeypatch: Any) -> None:
+    """No popover → no need to dismiss anything."""
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = None  # explicit
+    _stub_iter_at_location(view, over_text=False)
+    scheduled: list[int] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add",
+        lambda *_a, **_kw: (scheduled.append(1), 0)[1],
+    )
+
+    ctrl._on_motion(view, _motion_event())
+
+    assert scheduled == []
+
+
+def test_motion_to_whitespace_with_pointer_in_popover_does_not_schedule_grace(monkeypatch: Any) -> None:
+    """Pointer transiting into the popover from off-text virtual space → don't grace-dismiss."""
+    view = _make_view()
+    ctrl = _make_ctrl(view=view)
+    ctrl._popover = MagicMock()
+    ctrl._pointer_in_popover = True
+    _stub_iter_at_location(view, over_text=False)
+    scheduled: list[int] = []
+    monkeypatch.setattr(
+        "gi.repository.GLib.timeout_add",
+        lambda *_a, **_kw: (scheduled.append(1), 0)[1],
+    )
+
+    ctrl._on_motion(view, _motion_event())
+
+    assert scheduled == []

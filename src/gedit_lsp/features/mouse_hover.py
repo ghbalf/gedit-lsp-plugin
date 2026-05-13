@@ -175,6 +175,14 @@ class MouseHoverController:
         over_text, buffer_iter = view.get_iter_at_location(bx, by)
 
         if not over_text:
+            if (
+                self._popover is not None
+                and not self._pointer_in_popover
+            ):
+                self._cancel_grace_timer()
+                self._grace_timer_id = GLib.timeout_add(
+                    self._GRACE_MS, self._on_grace_expired,
+                )
             return False
 
         # If popover is up and pointer is still inside the anchored range,
