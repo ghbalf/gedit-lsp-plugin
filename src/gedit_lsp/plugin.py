@@ -449,7 +449,6 @@ class GeditLspPlugin(
         # Wire mouse-hover controller if the tunable is on and server supports it.
         if should_attach_mouse_hover(
             tunable_enabled="mouseHover" in self._config.tunable("enabledFeatures"),
-            hover_capability=server.capability("hoverProvider"),
         ):
             view = next(
                 (v for v in self.window.get_views() if v.get_buffer() is doc),

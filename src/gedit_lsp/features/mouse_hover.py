@@ -62,15 +62,18 @@ def _word_bounds_at(
     return start, end
 
 
-def should_attach_mouse_hover(
-    *, tunable_enabled: bool, hover_capability: Any
-) -> bool:
+def should_attach_mouse_hover(*, tunable_enabled: bool) -> bool:
     """Return True iff a MouseHoverController should be attached.
 
-    Tunable on/off + server's `hoverProvider` capability (truthy = present).
-    Lifted out of plugin.py so it's unit-testable without the full plugin.
+    Only the `enabledFeatures` membership matters here. We deliberately do
+    NOT inspect `server.capability("hoverProvider")` at attach time: LSP
+    capabilities arrive asynchronously after initialize, so any document
+    attached during the race window would see `None` and the feature would
+    silently disable itself. Mirrors how completion/signatureHelp/formatting
+    wire — request-time fallthrough handles servers that don't actually
+    answer hover.
     """
-    return bool(tunable_enabled) and bool(hover_capability)
+    return bool(tunable_enabled)
 
 
 class MouseHoverController:
@@ -169,28 +172,58 @@ class MouseHoverController:
         self._request_token += 1
         captured_token = self._request_token
 
+        # Motion events carry event.window set to the sub-window the pointer
+        # is over (TEXT for the text area, LEFT for the line-number gutter,
+        # etc.). The first arg to window_to_buffer_coords tells GTK which
+        # sub-window the input coords are FROM — passing a hardcoded WIDGET
+        # double-subtracts the gutter offset and shifts the resolved iter
+        # left by the gutter width.
+        window_type = view.get_window_type(event.window)
         bx, by = view.window_to_buffer_coords(
-            Gtk.TextWindowType.WIDGET, int(event.x), int(event.y)
+            window_type, int(event.x), int(event.y)
         )
         over_text, buffer_iter = view.get_iter_at_location(bx, by)
+
+        # The grace timer is a DEADLINE, not a debounce: it must fire 150ms
+        # after the user first left the anchor, even if they keep wiggling
+        # the pointer over whitespace. Each branch below arms it iff one
+        # isn't already armed; cancellation is reserved for "user came
+        # back to the anchor" and successful re-popover paths.
 
         if not over_text:
             if (
                 self._popover is not None
                 and not self._pointer_in_popover
+                and self._grace_timer_id is None
             ):
-                self._cancel_grace_timer()
                 self._grace_timer_id = GLib.timeout_add(
                     self._GRACE_MS, self._on_grace_expired,
                 )
             return False
 
         # If popover is up and pointer is still inside the anchored range,
-        # leave it alone — stable hover, no re-fire.
+        # leave it alone — stable hover, no re-fire. Also cancel any grace
+        # that was armed by a brief detour through whitespace: the user is
+        # back on the hover target.
         if self._popover is not None and self._anchor_range is not None:
             start, end = self._anchor_range
             if start.get_offset() <= buffer_iter.get_offset() < end.get_offset():
+                self._cancel_grace_timer()
                 return False
+            # Pointer moved off the anchored token. "Whitespace" here
+            # includes intertoken spaces and punctuation (over_text=True
+            # but not on the hovered word) — for those the dwell-then-null
+            # path would silently keep the stale popover up forever. Arm a
+            # grace dismiss; if the new dwell resolves to fresh hover
+            # content it will build a replacement popover (which cancels
+            # the grace timer in _on_response).
+            if (
+                not self._pointer_in_popover
+                and self._grace_timer_id is None
+            ):
+                self._grace_timer_id = GLib.timeout_add(
+                    self._GRACE_MS, self._on_grace_expired,
+                )
 
         self._timer_id = GLib.timeout_add(
             self._dwell_ms, self._on_dwell, captured_token, bx, by,
@@ -255,10 +288,19 @@ class MouseHoverController:
         else:
             start_iter, end_iter = _word_bounds_at(anchor_iter)
 
-        # Pop any previous popover before replacing.
+        # Pop any previous popover before replacing. Also cancel any grace
+        # timer armed by motion through the prior anchor's whitespace —
+        # the new popover supersedes that pending deadline.
         self._dismiss_popover()
+        self._cancel_grace_timer()
         self._anchor_range = (start_iter, end_iter)
         self._popover = build_hover_popover(self._view, start_iter, text)
+        # Disable modal mode: the default `Gtk.Popover.new(parent)` installs
+        # a pointer grab on popup that swallows the view's motion-notify-
+        # event, breaking every motion-driven dismiss path in this
+        # controller. We have our own button/key/focus/leave handlers, so
+        # we don't need GTK's modal-grab "click outside" auto-dismiss.
+        self._popover.set_modal(False)  # type: ignore[attr-defined]
         self._attach_popover_pointer_tracking(self._popover)
         self._popover.popup()
 
@@ -308,16 +350,31 @@ class MouseHoverController:
             self._cancel_grace_timer()
             return False
 
-        def on_leave(_w: Any, _e: Any) -> bool:
+        def on_leave(_w: Any, event: Any) -> bool:
+            # GTK fires leave-notify on a widget when the pointer crosses
+            # into one of its children (detail=INFERIOR). That's still
+            # "inside the popover" from the user's perspective — ignore it,
+            # otherwise the popover dismisses the moment the pointer reaches
+            # the inner ScrolledWindow / SourceView content.
+            if event.detail == Gdk.NotifyType.INFERIOR:
+                return False
             self._pointer_in_popover = False
-            # Pointer left the popover. Schedule a grace dismiss; on_enter
-            # cancels it if the pointer comes back in within the window.
+            # Real leave: schedule a grace dismiss; on_enter cancels it if
+            # the pointer comes back in within the window.
             self._cancel_grace_timer()
             self._grace_timer_id = GLib.timeout_add(
                 self._GRACE_MS, self._on_grace_expired,
             )
             return False
 
+        # Gtk.Popover's GdkWindow does not subscribe to enter/leave events by
+        # default; without this the signal handlers below silently never fire
+        # and the popover would dismiss as soon as the pointer enters it.
+        with contextlib.suppress(TypeError, RuntimeError):
+            popover.add_events(  # type: ignore[attr-defined]
+                Gdk.EventMask.ENTER_NOTIFY_MASK  # type: ignore[attr-defined]
+                | Gdk.EventMask.LEAVE_NOTIFY_MASK,  # type: ignore[attr-defined]
+            )
         with contextlib.suppress(TypeError, RuntimeError):
             popover.connect("enter-notify-event", on_enter)
         with contextlib.suppress(TypeError, RuntimeError):

@@ -180,8 +180,8 @@ Python file with an unused import) and verify:
 - [ ] Open a `.py` file; dwell pointer ~300 ms over an identifier → popover appears with the same content Ctrl+K would have shown.
 - [ ] Move pointer to whitespace → popover dismisses.
 - [ ] Move pointer *into* the popover → popover stays; scroll works if content is long.
-- [ ] Press any key → popover dismisses.
-- [ ] Click anywhere → popover dismisses.
+- [ ] Press `Escape` → popover dismisses. (Other keys are absorbed by the popover's inner GtkSource.View; this is intentional — it lets the user select text inside the popover without dismissing it.)
+- [ ] Click in the view text area (outside the anchored word) → popover dismisses. Click inside the popover → popover stays, so the user can scroll/select its content. The motion-driven dismiss (~150 ms) usually fires before a deliberate click-in-view reaches us.
 - [ ] Hover an unused-import line (pyflakes diagnostic) → popover shows hover content; server may include diagnostic-adjacent text.
 - [ ] Remove `"mouseHover"` from `enabledFeatures` in your config → no popover ever appears.
 - [ ] Edit a file with `"mouseHoverDwellMs": 1000` → popover delayed ~1 s.
