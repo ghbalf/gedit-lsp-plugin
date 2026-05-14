@@ -46,6 +46,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "outlineRefreshDebounceMs": 2000,
     "outlineInitialDelayMs": 1000,
     "hoverSpinnerThresholdMs": 300,
+    "mouseHoverDwellMs":       300,
     "requestTimeoutMs": 10000,
     "gotoHistoryMaxEntries": 50,
     "restartBackoffSchedule": [1, 2, 4, 8, 16, 30],
@@ -60,7 +61,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "enabledFeatures": [
         "diagnostics", "hover", "definition", "outline",
         "completion", "signatureHelp", "formatting", "references",
-        "rename", "codeAction",
+        "rename", "codeAction", "mouseHover",
     ],
     "severityIcons": {
         "error":   "dialog-error-symbolic",

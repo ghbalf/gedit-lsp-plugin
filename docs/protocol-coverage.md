@@ -5,7 +5,7 @@
 | `initialize` / `initialized` / `shutdown` / `exit` | ✓ |
 | `textDocument/didOpen` / `didChange` (Full **and** Incremental) / `didSave` / `didClose` | ✓ |
 | `textDocument/publishDiagnostics` | ✓ |
-| `textDocument/hover` | ✓ |
+| `textDocument/hover` (Ctrl+K **and** pointer-dwell over a token) | ✓ |
 | `textDocument/definition` | ✓ |
 | `textDocument/documentSymbol` | ✓ |
 | `textDocument/completion` (proposals; Details pane via popup's Alt+D toggle) | ✓ |

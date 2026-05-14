@@ -53,11 +53,11 @@ def build_preferences_widget(config_path: Path) -> Gtk.Widget:
 
     enabled = tunables.get(
         "enabledFeatures",
-        ["diagnostics", "hover", "definition", "outline", "completion"],
+        ["diagnostics", "hover", "definition", "outline", "completion", "mouseHover"],
     )
     feat_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     feat_checks: dict[str, Gtk.CheckButton] = {}
-    for feat in ["diagnostics", "hover", "definition", "outline", "completion"]:
+    for feat in ["diagnostics", "hover", "definition", "outline", "completion", "mouseHover"]:
         c = Gtk.CheckButton(label=feat)
         c.set_active(feat in enabled)
         feat_box.pack_start(c, False, False, 0)  # type: ignore[attr-defined]
