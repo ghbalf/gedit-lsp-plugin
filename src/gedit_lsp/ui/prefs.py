@@ -10,6 +10,16 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gio, Gtk
 
+from gedit_lsp.defaults import DEFAULT_TUNABLES
+
+# Single source of truth for which features get a per-feature on/off
+# checkbox in the dialog. Kept in lockstep with
+# DEFAULT_TUNABLES["enabledFeatures"] — every feature toggleable via JSON
+# MUST be toggleable via this checkbox list. See
+# feedback_every_feature_in_prefs_and_enabledfeatures for the invariant
+# and tests/unit/test_prefs.py for the regression that enforces it.
+FEATURE_CHECKBOX_NAMES: list[str] = list(DEFAULT_TUNABLES["enabledFeatures"])
+
 
 def build_preferences_widget(config_path: Path) -> Gtk.Widget:
     user = _load(config_path)
@@ -51,13 +61,10 @@ def build_preferences_widget(config_path: Path) -> Gtk.Widget:
     size_spin = Gtk.SpinButton(adjustment=size_adj)
     add_row("Max file size (bytes)", size_spin)
 
-    enabled = tunables.get(
-        "enabledFeatures",
-        ["diagnostics", "hover", "definition", "outline", "completion", "mouseHover"],
-    )
+    enabled = tunables.get("enabledFeatures", FEATURE_CHECKBOX_NAMES)
     feat_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     feat_checks: dict[str, Gtk.CheckButton] = {}
-    for feat in ["diagnostics", "hover", "definition", "outline", "completion", "mouseHover"]:
+    for feat in FEATURE_CHECKBOX_NAMES:
         c = Gtk.CheckButton(label=feat)
         c.set_active(feat in enabled)
         feat_box.pack_start(c, False, False, 0)  # type: ignore[attr-defined]
