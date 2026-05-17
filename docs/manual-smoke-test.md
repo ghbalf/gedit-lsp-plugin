@@ -190,6 +190,16 @@ Python file with an unused import) and verify:
 
 ## workspace/symbol (`feat/workspace-symbol`)
 
+> **Setup:** test against a server that implements `workspace/symbol`.
+> The apt `python3-pylsp` (verified 1.10.0) does **not** — it only
+> shows `LSP: server does not support workspace symbol search` (that
+> path is itself worth confirming once). Use `clangd` instead: a small
+> C project with `compile_commands.json` (e.g. `lib.c`/`lib.h` with a
+> few functions/structs + an `app.c` that calls them). Defaults map
+> `c → clangd --background-index`, so no config change and no gedit
+> restart are needed — opening the `.c` file spawns clangd. Search a
+> symbol defined in a *closed* file to exercise cross-file navigation.
+
 - [ ] Put the cursor inside an identifier; press `Shift+F3` → quick-pick opens, entry pre-filled with that identifier (fully selected); results load automatically after a brief (~150 ms) debounce.
 - [ ] Confirm `Shift+F3` is not swallowed by gedit/GtkSourceView (binding-owner check). If it is, fall back to another free F-key chord and update `defaults.py` + `docs/configure.md`.
 - [ ] Type to refine → results update live (server-side filtered), no lag/flicker on fast typing.
