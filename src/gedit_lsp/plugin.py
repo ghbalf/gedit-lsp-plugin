@@ -51,6 +51,7 @@ from gedit_lsp.features.outline import OutlineController
 from gedit_lsp.features.references import ReferencesController
 from gedit_lsp.features.rename import RenameController
 from gedit_lsp.features.signature_help import SignatureHelpController
+from gedit_lsp.features.workspace_symbol import WorkspaceSymbolController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
@@ -62,6 +63,7 @@ from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
 from gedit_lsp.ui.lightbulb_gutter import LightbulbGutter
 from gedit_lsp.ui.references_panel import ReferencesPanel
 from gedit_lsp.ui.statusbar import StatusbarIndicator
+from gedit_lsp.ui.workspace_symbol_quickpick import WorkspaceSymbolQuickPick
 from gedit_lsp.utf16 import text_iter_to_utf16
 
 
@@ -176,6 +178,12 @@ class GeditLspPlugin(
         )
         self._rename_ctrl = RenameController(window=win)
         self._code_action_ctrl = CodeActionController(window=win)
+        self._workspace_symbol_quickpick = WorkspaceSymbolQuickPick(win)
+        self._workspace_symbol_ctrl = WorkspaceSymbolController(
+            window=win,
+            quickpick=self._workspace_symbol_quickpick,
+            config=self._config,
+        )
         self._crash_notifier = CrashNotifier(win)
         self._handlers.append(
             (win, win.connect("active-tab-changed", lambda *_: self._refresh_statusbar()))
@@ -189,6 +197,7 @@ class GeditLspPlugin(
             ("lsp-references", "references", self._on_references_activate),
             ("lsp-rename", "rename", self._on_rename_activate),
             ("lsp-code-action", "code-action", self._on_code_action_activate),
+            ("lsp-workspace-symbol", "workspace-symbol", self._on_workspace_symbol_activate),
             ("lsp-show-server-logs", "show-server-logs", self._on_show_server_logs_activate),
             ("lsp-format", "format", self._on_format_activate),
         ]:
@@ -233,6 +242,9 @@ class GeditLspPlugin(
         self._mouse_hover_ctrls.clear()
         # FormattingController has no GTK resources to dispose; clear the map.
         self._formatting_ctrls.clear()
+        # Window-scoped, like the references panel; just make sure no
+        # quick-pick popover is left up across deactivation.
+        self._workspace_symbol_quickpick.dismiss()
         for disposers in self._listener_disposers.values():
             for dispose in disposers:
                 dispose()
@@ -683,6 +695,30 @@ class GeditLspPlugin(
         logger.info("references: triggering, server.state=%s", server.state)
         self._references_ctrl.trigger(
             server, bridge.uri, bridge.flush_pending_change,
+        )
+
+    def _on_workspace_symbol_activate(
+        self, _action: Gio.SimpleAction, _param: GObject.Object | None
+    ) -> None:
+        logger.info("workspace-symbol action invoked")
+        view = self.window.get_active_view()
+        if view is None:
+            logger.info("workspace-symbol: no active view")
+            return
+        doc = view.get_buffer()
+        bridge = self._bridges.get(doc)
+        server = self._servers.get(doc)
+        if bridge is None or server is None:
+            logger.info(
+                "workspace-symbol: doc not bridged (bridge=%s server=%s)",
+                bridge, server,
+            )
+            return
+        logger.info(
+            "workspace-symbol: triggering, server.state=%s", server.state
+        )
+        self._workspace_symbol_ctrl.trigger(
+            server, view, bridge.flush_pending_change,
         )
 
     def _on_rename_activate(
