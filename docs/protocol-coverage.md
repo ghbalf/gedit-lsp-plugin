@@ -19,6 +19,8 @@
 | `textDocument/codeAction` (Shift+F2; lightbulb in gutter on diagnostic lines; popover picker; edit + command apply) | ✓ |
 | `codeAction/resolve` (sent on commit when the chosen action has neither `edit` nor `command`) | ✓ |
 | `workspace/executeCommand` (sent for actions carrying a `command`) | ✓ |
+| `workspace/symbol` (Shift+F3; live quick-pick, server-side filtered, debounced) | ✓ |
+| `workspaceSymbol/resolve` (sent on activation when the chosen symbol has no `location.range` and the server advertises `resolveProvider`) | ✓ |
 
 `textDocument/didChange` is auto-selected per server: if the server's
 `textDocumentSync.change` advertises `Incremental` (2), the plugin sends

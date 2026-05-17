@@ -188,6 +188,21 @@ Python file with an unused import) and verify:
 - [ ] Open a second file; close the first while pointer dwells over it → no crash, no stray popover.
 - [ ] Start drag-select with the mouse → no popover during the drag.
 
+## workspace/symbol (`feat/workspace-symbol`)
+
+- [ ] Put the cursor inside an identifier; press `Shift+F3` → quick-pick opens, entry pre-filled with that identifier (fully selected); results load automatically after a brief (~150 ms) debounce.
+- [ ] Confirm `Shift+F3` is not swallowed by gedit/GtkSourceView (binding-owner check). If it is, fall back to another free F-key chord and update `defaults.py` + `docs/configure.md`.
+- [ ] Type to refine → results update live (server-side filtered), no lag/flicker on fast typing.
+- [ ] `Down`/`Up`/`PageDown`/`PageUp` move the selection while the text caret stays in the entry.
+- [ ] `Enter` on a symbol in an already-open file → jumps there.
+- [ ] `Enter` on a symbol in a closed file → opens it in a new tab at the symbol.
+- [ ] Click a row with the mouse → same navigation.
+- [ ] `Escape` dismisses; clicking outside the popover dismisses.
+- [ ] Clear the entry → "Type to search symbols" placeholder; `Enter` does nothing.
+- [ ] Type a nonsense query → "No symbols match" placeholder.
+- [ ] Remove `"workspaceSymbol"` from `enabledFeatures` in your config → `Shift+F3` does nothing (checkbox is functional).
+- [ ] In Preferences the "workspaceSymbol" checkbox is present and unticking it disables the feature.
+
 ## Final
 
 - [ ] All boxes ticked.
