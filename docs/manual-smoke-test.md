@@ -188,6 +188,31 @@ Python file with an unused import) and verify:
 - [ ] Open a second file; close the first while pointer dwells over it → no crash, no stray popover.
 - [ ] Start drag-select with the mouse → no popover during the drag.
 
+## workspace/symbol (`feat/workspace-symbol`)
+
+> **Setup:** test against a server that implements `workspace/symbol`.
+> The apt `python3-pylsp` (verified 1.10.0) does **not** — it only
+> shows `LSP: server does not support workspace symbol search` (that
+> path is itself worth confirming once). Use `clangd` instead: a small
+> C project with `compile_commands.json` (e.g. `lib.c`/`lib.h` with a
+> few functions/structs + an `app.c` that calls them). Defaults map
+> `c → clangd --background-index`, so no config change and no gedit
+> restart are needed — opening the `.c` file spawns clangd. Search a
+> symbol defined in a *closed* file to exercise cross-file navigation.
+
+- [ ] Put the cursor inside an identifier; press `Shift+F3` → quick-pick opens, entry pre-filled with that identifier (fully selected); results load automatically after a brief (~150 ms) debounce.
+- [ ] Confirm `Shift+F3` is not swallowed by gedit/GtkSourceView (binding-owner check). If it is, fall back to another free F-key chord and update `defaults.py` + `docs/configure.md`.
+- [ ] Type to refine → results update live (server-side filtered), no lag/flicker on fast typing.
+- [ ] `Down`/`Up`/`PageDown`/`PageUp` move the selection while the text caret stays in the entry.
+- [ ] `Enter` on a symbol in an already-open file → jumps there.
+- [ ] `Enter` on a symbol in a closed file → opens it in a new tab at the symbol.
+- [ ] Click a row with the mouse → same navigation.
+- [ ] `Escape` dismisses; clicking outside the popover dismisses.
+- [ ] Clear the entry → "Type to search symbols" placeholder; `Enter` does nothing.
+- [ ] Type a nonsense query → "No symbols match" placeholder.
+- [ ] Remove `"workspaceSymbol"` from `enabledFeatures` in your config → `Shift+F3` does nothing (checkbox is functional).
+- [ ] In Preferences the "workspaceSymbol" checkbox is present and unticking it disables the feature.
+
 ## Final
 
 - [ ] All boxes ticked.

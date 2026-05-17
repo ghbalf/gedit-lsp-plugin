@@ -78,6 +78,7 @@ works).
 | `code-action` | `<Shift>F2` | Show code actions at the cursor. A lightbulb in the gutter signals diagnostic lines whose actions are likely available; the keybind also works on lines with refactor-only actions where no diagnostic is present |
 | `show-server-logs` | (none) | Open a dialog showing recent stderr from the active document's language server |
 | `format` | `<Primary><Shift>i` | Format the document (or the selection if any) via the server |
+| `workspace-symbol` | `<Shift>F3` | Open a live quick-pick that searches every symbol in the project (server-side filtered as you type) and jumps to the chosen one |
 
 ```json
 { "keybindings": { "hover": "<Primary>i", "goto-definition": ["F12", "<Primary>F12"] } }
@@ -104,6 +105,7 @@ Per-key replacement; missing keys keep their default.
 | `outlineInitialDelayMs` | int | 1000 | Delay before first outline request after document open |
 | `hoverSpinnerThresholdMs` | int | 300 | Show spinner if hover hasn't returned by this time |
 | `mouseHoverDwellMs` | int | 300 | Milliseconds the pointer must dwell over a token before a `textDocument/hover` request is sent. Increase for slower-feeling hovers; decrease for snappier. 300 ms matches VS Code's default. Only meaningful when `"mouseHover"` is in `enabledFeatures`. |
+| `workspaceSymbolDebounceMs` | int | 150 | Debounce window (ms) between the last keystroke in the workspace-symbol quick-pick and the `workspace/symbol` request. Lower values feel snappier; higher values reduce server round-trips on fast typing. |
 | `requestTimeoutMs` | int | 10000 | Per-request timeout |
 | `gotoHistoryMaxEntries` | int | 50 | Max entries in the cursor history (Alt+Left) |
 | `restartBackoffSchedule` | int[] | `[1,2,4,8,16,30]` | Backoff delays (seconds) on consecutive crashes |
@@ -115,7 +117,7 @@ Per-key replacement; missing keys keep their default.
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
 | `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
-| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references","rename","codeAction","mouseHover"]` | Which features run. Remove a name to disable that feature. Valid names include `diagnostics`, `hover`, `definition`, `outline`, `completion`, `signatureHelp`, `formatting`, `references`, `rename`, `codeAction`, `mouseHover`. |
+| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references","rename","codeAction","mouseHover","workspaceSymbol"]` | Which features run. Remove a name to disable that feature. Valid names include `diagnostics`, `hover`, `definition`, `outline`, `completion`, `signatureHelp`, `formatting`, `references`, `rename`, `codeAction`, `mouseHover`, `workspaceSymbol`. |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
 | `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |
 | `severityUnderlineColor` | obj | (see defaults) | Per-severity squiggle color (CSS hex). Overrides the theme's red default for `Pango.Underline.ERROR`. Set a value to `""` to fall back to the theme color. |

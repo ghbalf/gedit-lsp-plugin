@@ -38,6 +38,7 @@ DEFAULT_KEYBINDINGS: dict[str, list[str]] = {
     "code-action":      ["<Shift>F2"],
     "show-server-logs": [],
     "format":           ["<Primary><Shift>i"],
+    "workspace-symbol": ["<Shift>F3"],
 }
 
 DEFAULT_TUNABLES: dict[str, Any] = {
@@ -47,6 +48,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "outlineInitialDelayMs": 1000,
     "hoverSpinnerThresholdMs": 300,
     "mouseHoverDwellMs":       300,
+    "workspaceSymbolDebounceMs": 150,
     "requestTimeoutMs": 10000,
     "gotoHistoryMaxEntries": 50,
     "restartBackoffSchedule": [1, 2, 4, 8, 16, 30],
@@ -61,7 +63,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
     "enabledFeatures": [
         "diagnostics", "hover", "definition", "outline",
         "completion", "signatureHelp", "formatting", "references",
-        "rename", "codeAction", "mouseHover",
+        "rename", "codeAction", "mouseHover", "workspaceSymbol",
     ],
     "severityIcons": {
         "error":   "dialog-error-symbolic",
