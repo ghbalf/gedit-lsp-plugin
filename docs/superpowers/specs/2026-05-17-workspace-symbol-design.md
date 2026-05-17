@@ -126,12 +126,30 @@ Per symbol:
 - `SymbolKind` int (1–26) → short label via `symbol_kind_label`
   (e.g. 5→`class`, 6→`method`, 12→`function`, 13→`variable`,
   14→`constant`); unknown → `symbol`.
-- Rendered as `Gtk.Label` **text**, never `set_markup` on
-  server-provided strings (injection-safe — a symbol named
-  `<b>x</b>` must not render as markup).
-- The raw symbol dict is stashed on the row via a
-  `_gedit_lsp_symbol` attribute (the `CodeActionPopover`
-  `_gedit_lsp_action` precedent) for retrieval on activation.
+- Rendered as `Gtk.CellRendererText` **text** (column `text=0`,
+  never `markup=`), so server-provided strings are injection-safe —
+  a symbol named `<b>x</b>` must not render as markup.
+- **Row → symbol retrieval (implemented design — supersedes the
+  earlier `_gedit_lsp_symbol`-stash sketch):** the widget does *not*
+  stash the dict on each row. Instead `WorkspaceSymbolQuickPick`
+  wraps a `QuickPickModel` and `set_results` populates the
+  `Gtk.ListStore` and the model from the *same* `symbols` list in the
+  *same order*; activation reads the symbol via
+  `model.selected()` (keyboard) or
+  `model.select_index(path.get_indices()[0])` → `model.selected()`
+  (mouse). This is the chosen design because it keeps the symbol
+  objects in the already-unit-tested pure model rather than smuggled
+  through GTK row attributes, mirroring how `CodeActionPopoverModel`
+  owns selection state. **Invariant (by construction):** the
+  `Gtk.ListStore` row index and `QuickPickModel._symbols` index must
+  stay 1:1 — `set_results` is the single writer of both and writes
+  them together; the empty/hint case appends a *non-symbol*
+  placeholder row while the model is empty, and activation is safe
+  there only because `model.selected()` returns `None` first (the
+  model, not the store, is the source of truth for activation). Any
+  future change that adds non-symbol rows (e.g. a "…more" footer) or
+  filters one side must preserve this 1:1 mapping or route activation
+  through the model exclusively.
 
 No themed icon decoration (matches the references "plain text, no
 icon decoration" non-goal — avoids icon-name portability questions).
