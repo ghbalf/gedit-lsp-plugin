@@ -70,3 +70,21 @@ def test_moves_single_element_stay() -> None:
     m.move_down()
     m.move_up()
     assert m.selected_index == 0
+
+
+def test_select_index_in_range_and_out() -> None:
+    m = QuickPickModel()
+    m.set_results(_syms(4))
+    m.select_index(2)
+    assert m.selected_index == 2
+    m.select_index(99)        # out of range -> no-op
+    assert m.selected_index == 2
+    m.select_index(-1)        # negative -> no-op
+    assert m.selected_index == 2
+
+
+def test_select_index_noop_when_empty() -> None:
+    m = QuickPickModel()
+    m.set_results([])
+    m.select_index(0)
+    assert m.selected_index is None
