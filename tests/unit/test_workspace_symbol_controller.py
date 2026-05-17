@@ -319,3 +319,40 @@ def test_retrigger_does_not_accept_previous_session_response() -> None:
     quickpick.set_results.assert_not_called()
     # The old in-flight request must have been cancelled on re-trigger.
     assert 1 in server.cancelled
+
+
+def test_activate_resolve_stale_token_does_not_navigate(monkeypatch: Any) -> None:
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.workspace_symbol.navigate_to_uri",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    server = _FakeServer(cap={"resolveProvider": True})
+    ctrl, server, quickpick, _sb, _ = _build(server=server)
+    ctrl.trigger(server, _FakeView(_empty_buf()), lambda: None)
+    ctrl._on_activate({"name": "f", "location": {"uri": "file:///a.py"}})
+    # resolve request was sent; capture its callback
+    resolve_cb = server.requests[-1][2]
+    # user moves on: a new query bumps the token (immediate schedule fires _fire)
+    ctrl._on_query("later")
+    # late resolve response must NOT navigate (stale token)
+    resolve_cb({"result": {"name": "f", "location":
+                {"uri": "file:///a.py",
+                 "range": {"start": {"line": 5, "character": 2},
+                           "end": {"line": 5, "character": 3}}}}})
+    assert calls == []
+
+
+def test_activate_malformed_range_falls_back_to_line0(monkeypatch: Any) -> None:
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        "gedit_lsp.features.workspace_symbol.navigate_to_uri",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    ctrl, server, quickpick, _sb, _ = _build()
+    ctrl.trigger(server, _FakeView(_empty_buf()), lambda: None)
+    # range present but malformed (truthy dict, no usable start) -> line 0, no crash
+    ctrl._on_activate({"name": "f", "location":
+                       {"uri": "file:///a.py", "range": {"start": {}}}})
+    assert calls and calls[0][0][1] == "file:///a.py"
+    assert calls[0][0][2] == 0 and calls[0][0][3] == 0

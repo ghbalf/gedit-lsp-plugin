@@ -219,7 +219,11 @@ class WorkspaceSymbolController:
             return
         cap = self._server.capability("workspaceSymbolProvider")
         if isinstance(cap, dict) and cap.get("resolveProvider"):
+            my = self._token
+
             def _cb(msg: dict[str, Any]) -> None:
+                if my != self._token:
+                    return
                 if msg.get("error"):
                     self._navigate(uri, None)
                     return
@@ -235,11 +239,9 @@ class WorkspaceSymbolController:
             self._navigate(uri, None)
 
     def _navigate(self, uri: str, rng: dict[str, Any] | None) -> None:
-        if rng:
-            line = rng["start"]["line"]
-            char = rng["start"]["character"]
-        else:
-            line, char = 0, 0
+        start = (rng or {}).get("start") or {}
+        line = start.get("line", 0)
+        char = start.get("character", 0)
         navigate_to_uri(
             self._window, uri, line, char,
             to_iter=lambda buf: utf16_to_text_iter(buf, line, char),
