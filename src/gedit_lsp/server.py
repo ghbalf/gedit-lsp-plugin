@@ -21,6 +21,7 @@ import gi
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
 
+from gedit_lsp.progress import ProgressTracker
 from gedit_lsp.rpc import RpcClient
 
 
@@ -112,6 +113,8 @@ class LanguageServer:
         self._idle_source_id: int | None = None
         self._diagnostics_listeners: list[Callable[[dict[str, Any]], None]] = []
         self._state_listeners: list[Callable[[ServerState], None]] = []
+        self._progress = ProgressTracker()
+        self._progress_listeners: list[Callable[[], None]] = []
         self._stderr_buffer: deque[str] = deque(maxlen=stderr_buffer_max_lines)
 
     @property
@@ -197,6 +200,32 @@ class LanguageServer:
 
         return _dispose
 
+    def add_progress_listener(
+        self, callback: Callable[[], None]
+    ) -> Callable[[], None]:
+        """Register a progress listener fired whenever active progress
+        changes. Returns a disposer; call it to remove the listener
+        (calling more than once is a no-op). Same cleanup discipline as
+        the diagnostics/state listeners — dispose on tab-removed/deactivate
+        so closures don't outlive their buffer."""
+        self._progress_listeners.append(callback)
+
+        def _dispose() -> None:
+            with contextlib.suppress(ValueError):
+                self._progress_listeners.remove(callback)
+
+        return _dispose
+
+    def active_progress_fragment(self) -> str | None:
+        """The statusbar fragment for the newest active work-done token,
+        or None when no progress is in flight."""
+        return self._progress.active_fragment()
+
+    def _on_progress(self, msg: dict[str, Any]) -> None:
+        if self._progress.handle(msg.get("params", {})):
+            for cb in self._progress_listeners:
+                cb()
+
     def send_notification(self, method: str, params: Any) -> None:
         if self._transport is None:
             return
@@ -249,6 +278,7 @@ class LanguageServer:
     # --- internal ---
 
     def _spawn_and_initialize(self) -> None:
+        self._progress = ProgressTracker()
         self.state = ServerState.STARTING
         log_prefix = f"[{self.language_id}:{Path(self.root_path).name}]"
         self._transport = self._transport_factory(
@@ -264,6 +294,7 @@ class LanguageServer:
         self._transport.on_notification(
             "textDocument/publishDiagnostics", self._on_diagnostics
         )
+        self._transport.on_notification("$/progress", self._on_progress)
         self._transport.send(
             {
                 "jsonrpc": "2.0",

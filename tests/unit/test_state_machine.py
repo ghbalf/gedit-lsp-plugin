@@ -335,3 +335,95 @@ def test_transport_factory_receives_cwd_equal_to_root_path(
     )
     server.attach_buffer("file:///tmp/some/workspace/root/a.py")
     assert captured["kwargs"].get("cwd") == "/tmp/some/workspace/root"
+
+
+def _ready(server: LanguageServer, transport: FakeTransport) -> None:
+    """Drive a server to READY so notification handlers are registered."""
+    server.attach_buffer("file:///tmp/proj/a.py")
+    init_id = transport.outgoing[0]["id"]
+    transport.fake_response(init_id, result={"capabilities": {}})
+
+
+def test_progress_notification_updates_active_fragment(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert server.active_progress_fragment() == "Indexing"
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "report", "percentage": 60}},
+    )
+    assert server.active_progress_fragment() == "Indexing 60%"
+    transport.fake_notification(
+        "$/progress", {"token": "idx", "value": {"kind": "end"}}
+    )
+    assert server.active_progress_fragment() is None
+
+
+def test_progress_listener_fires_on_change_and_disposes(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    calls: list[int] = []
+    dispose = server.add_progress_listener(lambda: calls.append(1))
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert len(calls) == 1
+    dispose()
+    transport.fake_notification(
+        "$/progress", {"token": "idx", "value": {"kind": "end"}}
+    )
+    assert len(calls) == 1  # disposed: no further calls
+
+
+def test_progress_listener_not_fired_for_unknown_token_report(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    calls: list[int] = []
+    server.add_progress_listener(lambda: calls.append(1))
+    transport.fake_notification(
+        "$/progress",
+        {"token": "ghost", "value": {"kind": "report", "percentage": 10}},
+    )
+    assert calls == []  # no state change → no listener fire
+
+
+def test_progress_cleared_on_server_restart(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert server.active_progress_fragment() == "Indexing"
+    server._handle_subprocess_exit_for_test(1)            # simulate crash
+    server.attach_buffer("file:///tmp/proj/a.py")         # respawn
+    assert server.active_progress_fragment() is None      # clean slate
+
+
+def test_progress_listener_disposer_is_idempotent(
+    server: LanguageServer,
+) -> None:
+    dispose = server.add_progress_listener(lambda: None)
+    dispose()
+    dispose()  # must not raise
+
+
+def test_progress_during_starting_state(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    server.attach_buffer("file:///tmp/proj/a.py")
+    assert server.state == ServerState.STARTING
+    transport.fake_notification(
+        "$/progress",
+        {"token": "init", "value": {"kind": "begin", "title": "Loading"}},
+    )
+    assert server.active_progress_fragment() == "Loading"
