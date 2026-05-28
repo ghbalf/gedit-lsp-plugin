@@ -21,6 +21,8 @@
 | `workspace/executeCommand` (sent for actions carrying a `command`) | ✓ |
 | `workspace/symbol` (Shift+F3; live quick-pick, server-side filtered, debounced) | ✓ |
 | `workspaceSymbol/resolve` (sent on activation when the chosen symbol has no `location.range` and the server advertises `resolveProvider`) | ✓ |
+| `$/progress` (work-done; server-initiated, shown in statusbar) | ✓ |
+| `window/workDoneProgress/create` (server→client; acked `null`) | ✓ |
 
 `textDocument/didChange` is auto-selected per server: if the server's
 `textDocumentSync.change` advertises `Incremental` (2), the plugin sends
@@ -40,3 +42,12 @@ capability (e.g. `clangd`, verified 18.1.3 = supported) or a
 newer/alternative Python language server that implements it. This is a
 server limitation, not a plugin limitation; `textDocument/documentSymbol`
 (the file-local *outline*) is unaffected and works on pylsp.
+
+`$/progress` covers **server-initiated** work-done progress (e.g. clangd
+indexing). The plugin advertises `window.workDoneProgress` in `initialize`,
+acks the server's `window/workDoneProgress/create` request, and shows the
+active token's title/percentage in the statusbar, appended to the server
+state (`LSP: clangd ⚡ · indexing… 45%`). Progress on the plugin's own
+requests (a client-supplied `workDoneToken`) and cancellation are not
+implemented. Like `workspace/symbol`, emission is server-dependent: a
+server that never sends `$/progress` simply shows the plain state glyph.

@@ -117,7 +117,7 @@ Per-key replacement; missing keys keep their default.
 | `maxFileSizeBytes` | int | 5_242_880 | Buffers larger than this are skipped |
 | `showStatusbarIndicator` | bool | `true` | Show the LSP state indicator in the statusbar |
 | `stderrBufferMaxLines` | int | 1000 | How many recent stderr lines per server to retain for the **Show Server Logs…** menu |
-| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references","rename","codeAction","mouseHover","workspaceSymbol"]` | Which features run. Remove a name to disable that feature. Valid names include `diagnostics`, `hover`, `definition`, `outline`, `completion`, `signatureHelp`, `formatting`, `references`, `rename`, `codeAction`, `mouseHover`, `workspaceSymbol`. |
+| `enabledFeatures` | str[] | `["diagnostics","hover","definition","outline","completion","signatureHelp","formatting","references","rename","codeAction","mouseHover","workspaceSymbol","progress"]` | Which features run. Remove a name to disable that feature. Valid names include `diagnostics`, `hover`, `definition`, `outline`, `completion`, `signatureHelp`, `formatting`, `references`, `rename`, `codeAction`, `mouseHover`, `workspaceSymbol`, `progress`. The `progress` feature shows server-reported work-done progress (e.g. indexing) in the statusbar. |
 | `severityIcons` | obj | (see defaults) | Per-severity gutter icon names |
 | `severityUnderlineStyle` | obj | (see defaults) | Per-severity Pango underline style: `error` (wavy), `single`, `none` |
 | `severityUnderlineColor` | obj | (see defaults) | Per-severity squiggle color (CSS hex). Overrides the theme's red default for `Pango.Underline.ERROR`. Set a value to `""` to fall back to the theme color. |
