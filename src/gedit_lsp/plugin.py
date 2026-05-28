@@ -55,8 +55,7 @@ from gedit_lsp.features.workspace_symbol import WorkspaceSymbolController
 from gedit_lsp.log import setup_logging
 from gedit_lsp.registry import ServerRegistry
 from gedit_lsp.root import ProjectRootResolver
-from gedit_lsp.rpc import RpcClient
-from gedit_lsp.server import LanguageServer, ServerState
+from gedit_lsp.server import LanguageServer, ServerState, real_transport_factory
 from gedit_lsp.ui import popup_menu, server_logs
 from gedit_lsp.ui.crash_notify import CrashNotifier
 from gedit_lsp.ui.diagnostics_panel import DiagnosticsPanel
@@ -99,22 +98,9 @@ def _ensure_globals() -> tuple[Config, ServerRegistry]:
             keep=_config.tunable("logRotationKeepFiles"),
         )
 
-        def factory(
-            command: list[str],
-            log_prefix: str,
-            on_exit: Any,
-            on_stderr_line: Callable[[str], None] | None = None,
-            cwd: str | None = None,
-        ) -> RpcClient:
-            return RpcClient(
-                command=command,
-                log_prefix=log_prefix,
-                on_exit=on_exit,
-                on_stderr_line=on_stderr_line,
-                cwd=cwd,
-            )
-
-        _registry = ServerRegistry(config=_config, transport_factory=factory)
+        _registry = ServerRegistry(
+            config=_config, transport_factory=real_transport_factory
+        )
     assert _config is not None and _registry is not None
     return _config, _registry
 

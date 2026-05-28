@@ -474,3 +474,26 @@ def test_initialize_advertises_workdone_progress_capability(
     init = transport.outgoing[0]
     assert init["method"] == "initialize"
     assert init["params"]["capabilities"]["window"]["workDoneProgress"] is True
+
+
+def test_real_transport_factory_accepts_full_server_call_signature() -> None:
+    """Regression: the production factory must accept every kwarg
+    LanguageServer._spawn_and_initialize passes — including on_request.
+    A drifted factory raises TypeError at server spawn in live gedit, which
+    no FakeTransport-based test exercises (the bug that broke the plugin)."""
+    from gedit_lsp.rpc import RpcClient
+    from gedit_lsp.server import real_transport_factory
+
+    def _on_request(msg: dict[str, Any]) -> None:
+        pass
+
+    client = real_transport_factory(
+        ["pylsp"],
+        "[py:proj]",
+        lambda _code: None,  # on_exit
+        on_stderr_line=lambda _line: None,
+        cwd="/tmp/proj",
+        on_request=_on_request,
+    )
+    assert isinstance(client, RpcClient)
+    assert client._on_request is _on_request  # noqa: SLF001
