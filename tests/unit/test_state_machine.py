@@ -465,3 +465,12 @@ def test_server_request_without_id_is_ignored(
     transport.outgoing.clear()
     server._on_server_request({"jsonrpc": "2.0", "method": "no/id"})
     assert transport.outgoing == []
+
+
+def test_initialize_advertises_workdone_progress_capability(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    server.attach_buffer("file:///tmp/proj/a.py")
+    init = transport.outgoing[0]
+    assert init["method"] == "initialize"
+    assert init["params"]["capabilities"]["window"]["workDoneProgress"] is True

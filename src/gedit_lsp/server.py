@@ -355,7 +355,7 @@ class LanguageServer:
         return {
             "processId": None,
             "rootUri": f"file://{self.root_path}",
-            "capabilities": {},
+            "capabilities": {"window": {"workDoneProgress": True}},
             "initializationOptions": self.initialization_options,
         }
 
