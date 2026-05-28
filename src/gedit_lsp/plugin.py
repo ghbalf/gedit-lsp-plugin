@@ -409,6 +409,9 @@ class GeditLspPlugin(
             )
 
         disposers.append(server.add_state_listener(_state_listener))
+        disposers.append(
+            server.add_progress_listener(lambda: self._refresh_statusbar())
+        )
         self._refresh_statusbar()
 
         ctrl = DiagnosticsController(
@@ -863,4 +866,9 @@ class GeditLspPlugin(
             ServerState.STOPPING:     f"LSP: {cmd} ⏹",
             ServerState.CIRCUIT_OPEN: f"LSP: {cmd} ✗ disabled",
         }
-        self._statusbar.set_state(states.get(server.state, ""))
+        text = states.get(server.state, "")
+        if "progress" in self._config.tunable("enabledFeatures"):
+            fragment = server.active_progress_fragment()
+            if fragment:
+                text = f"{text} · {fragment}"
+        self._statusbar.set_state(text)
