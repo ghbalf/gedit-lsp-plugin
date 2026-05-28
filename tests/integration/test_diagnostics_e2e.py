@@ -61,6 +61,7 @@ def test_diagnostics_listener_receives_notifications(
         on_subprocess_exit: Any,
         on_stderr_line: Any = None,
         cwd: str | None = None,
+        on_request: Any = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
@@ -68,6 +69,7 @@ def test_diagnostics_listener_receives_notifications(
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
             cwd=cwd,
+            on_request=on_request,
         )
 
     server = LanguageServer(

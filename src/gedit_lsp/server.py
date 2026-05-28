@@ -52,6 +52,7 @@ def real_transport_factory(
     on_exit: Callable[[int], None],
     on_stderr_line: Callable[[str], None] | None = None,
     cwd: str | None = None,
+    on_request: Callable[[dict[str, Any]], None] | None = None,
 ) -> RpcClient:
     return RpcClient(
         command=command,
@@ -59,6 +60,7 @@ def real_transport_factory(
         on_exit=on_exit,
         on_stderr_line=on_stderr_line,
         cwd=cwd,
+        on_request=on_request,
     )
 
 
@@ -233,6 +235,50 @@ class LanguageServer:
             {"jsonrpc": "2.0", "method": method, "params": params}
         )
 
+    def _send_response(self, request_id: Any, result: Any) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {"jsonrpc": "2.0", "id": request_id, "result": result}
+        )
+
+    def _send_error_response(
+        self, request_id: Any, code: int, message: str
+    ) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": code, "message": message},
+            }
+        )
+
+    def _on_server_request(self, msg: dict[str, Any]) -> None:
+        """Handle a server→client request. We only invite
+        `window/workDoneProgress/create` (via the advertised
+        `window.workDoneProgress` capability); ack it with `null`. Any other
+        request gets a JSON-RPC `method not found` error so a spec-strict
+        server doesn't stall waiting for a response."""
+        request_id = msg.get("id")
+        if request_id is None:
+            return
+        if msg.get("method") == "window/workDoneProgress/create":
+            self._send_response(request_id, None)
+        else:
+            # We don't implement dynamic capability registration
+            # (client/registerCapability) or workspace/configuration, so any
+            # other server->client request gets a spec-correct MethodNotFound
+            # rather than a faked success (which would make the server believe
+            # a capability is active that we never honor). Our minimal
+            # advertised capabilities mean a well-behaved server won't send
+            # these; proper dynamic-registration handling will arrive with
+            # workspace/didChangeWatchedFiles (a later v0.4.0 item).
+            self._send_error_response(
+                request_id, -32601, f"method not found: {msg.get('method')}"
+            )
+
     def _send_request(
         self,
         method: str,
@@ -287,6 +333,7 @@ class LanguageServer:
             self._handle_subprocess_exit,
             on_stderr_line=self._stderr_buffer.append,
             cwd=self.root_path,
+            on_request=self._on_server_request,
         )
         self._transport.start()
         req_id = next(self._req_ids)

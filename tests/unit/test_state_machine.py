@@ -427,3 +427,41 @@ def test_progress_during_starting_state(
         {"token": "init", "value": {"kind": "begin", "title": "Loading"}},
     )
     assert server.active_progress_fragment() == "Loading"
+
+
+def test_workdone_create_request_is_acked_with_null(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request(
+        {"jsonrpc": "2.0", "id": 99, "method": "window/workDoneProgress/create",
+         "params": {"token": "idx"}}
+    )
+    assert transport.outgoing == [
+        {"jsonrpc": "2.0", "id": 99, "result": None}
+    ]
+
+
+def test_unknown_server_request_gets_method_not_found_error(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request(
+        {"jsonrpc": "2.0", "id": 7, "method": "client/registerCapability",
+         "params": {}}
+    )
+    assert len(transport.outgoing) == 1
+    sent = transport.outgoing[0]
+    assert sent["id"] == 7
+    assert sent["error"]["code"] == -32601
+
+
+def test_server_request_without_id_is_ignored(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request({"jsonrpc": "2.0", "method": "no/id"})
+    assert transport.outgoing == []
