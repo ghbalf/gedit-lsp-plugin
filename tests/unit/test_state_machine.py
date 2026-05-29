@@ -335,3 +335,165 @@ def test_transport_factory_receives_cwd_equal_to_root_path(
     )
     server.attach_buffer("file:///tmp/some/workspace/root/a.py")
     assert captured["kwargs"].get("cwd") == "/tmp/some/workspace/root"
+
+
+def _ready(server: LanguageServer, transport: FakeTransport) -> None:
+    """Drive a server to READY so notification handlers are registered."""
+    server.attach_buffer("file:///tmp/proj/a.py")
+    init_id = transport.outgoing[0]["id"]
+    transport.fake_response(init_id, result={"capabilities": {}})
+
+
+def test_progress_notification_updates_active_fragment(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert server.active_progress_fragment() == "Indexing"
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "report", "percentage": 60}},
+    )
+    assert server.active_progress_fragment() == "Indexing 60%"
+    transport.fake_notification(
+        "$/progress", {"token": "idx", "value": {"kind": "end"}}
+    )
+    assert server.active_progress_fragment() is None
+
+
+def test_progress_listener_fires_on_change_and_disposes(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    calls: list[int] = []
+    dispose = server.add_progress_listener(lambda: calls.append(1))
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert len(calls) == 1
+    dispose()
+    transport.fake_notification(
+        "$/progress", {"token": "idx", "value": {"kind": "end"}}
+    )
+    assert len(calls) == 1  # disposed: no further calls
+
+
+def test_progress_listener_not_fired_for_unknown_token_report(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    calls: list[int] = []
+    server.add_progress_listener(lambda: calls.append(1))
+    transport.fake_notification(
+        "$/progress",
+        {"token": "ghost", "value": {"kind": "report", "percentage": 10}},
+    )
+    assert calls == []  # no state change → no listener fire
+
+
+def test_progress_cleared_on_server_restart(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.fake_notification(
+        "$/progress",
+        {"token": "idx", "value": {"kind": "begin", "title": "Indexing"}},
+    )
+    assert server.active_progress_fragment() == "Indexing"
+    server._handle_subprocess_exit_for_test(1)            # simulate crash
+    server.attach_buffer("file:///tmp/proj/a.py")         # respawn
+    assert server.active_progress_fragment() is None      # clean slate
+
+
+def test_progress_listener_disposer_is_idempotent(
+    server: LanguageServer,
+) -> None:
+    dispose = server.add_progress_listener(lambda: None)
+    dispose()
+    dispose()  # must not raise
+
+
+def test_progress_during_starting_state(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    server.attach_buffer("file:///tmp/proj/a.py")
+    assert server.state == ServerState.STARTING
+    transport.fake_notification(
+        "$/progress",
+        {"token": "init", "value": {"kind": "begin", "title": "Loading"}},
+    )
+    assert server.active_progress_fragment() == "Loading"
+
+
+def test_workdone_create_request_is_acked_with_null(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request(
+        {"jsonrpc": "2.0", "id": 99, "method": "window/workDoneProgress/create",
+         "params": {"token": "idx"}}
+    )
+    assert transport.outgoing == [
+        {"jsonrpc": "2.0", "id": 99, "result": None}
+    ]
+
+
+def test_unknown_server_request_gets_method_not_found_error(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request(
+        {"jsonrpc": "2.0", "id": 7, "method": "client/registerCapability",
+         "params": {}}
+    )
+    assert len(transport.outgoing) == 1
+    sent = transport.outgoing[0]
+    assert sent["id"] == 7
+    assert sent["error"]["code"] == -32601
+
+
+def test_server_request_without_id_is_ignored(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    _ready(server, transport)
+    transport.outgoing.clear()
+    server._on_server_request({"jsonrpc": "2.0", "method": "no/id"})
+    assert transport.outgoing == []
+
+
+def test_initialize_advertises_workdone_progress_capability(
+    server: LanguageServer, transport: FakeTransport
+) -> None:
+    server.attach_buffer("file:///tmp/proj/a.py")
+    init = transport.outgoing[0]
+    assert init["method"] == "initialize"
+    assert init["params"]["capabilities"]["window"]["workDoneProgress"] is True
+
+
+def test_real_transport_factory_accepts_full_server_call_signature() -> None:
+    """Regression: the production factory must accept every kwarg
+    LanguageServer._spawn_and_initialize passes — including on_request.
+    A drifted factory raises TypeError at server spawn in live gedit, which
+    no FakeTransport-based test exercises (the bug that broke the plugin)."""
+    from gedit_lsp.rpc import RpcClient
+    from gedit_lsp.server import real_transport_factory
+
+    def _on_request(msg: dict[str, Any]) -> None:
+        pass
+
+    client = real_transport_factory(
+        ["pylsp"],
+        "[py:proj]",
+        lambda _code: None,  # on_exit
+        on_stderr_line=lambda _line: None,
+        cwd="/tmp/proj",
+        on_request=_on_request,
+    )
+    assert isinstance(client, RpcClient)
+    assert client._on_request is _on_request  # noqa: SLF001

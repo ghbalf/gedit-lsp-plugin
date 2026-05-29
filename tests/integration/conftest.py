@@ -49,6 +49,7 @@ def registry(cfg: Config) -> ServerRegistry:
         on_exit: Callable[[int], None],
         on_stderr_line: Callable[[str], None] | None = None,
         cwd: str | None = None,
+        on_request: Callable[[dict[str, Any]], None] | None = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
@@ -56,6 +57,7 @@ def registry(cfg: Config) -> ServerRegistry:
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
             cwd=cwd,
+            on_request=on_request,
         )
 
     return ServerRegistry(config=cfg, transport_factory=factory)

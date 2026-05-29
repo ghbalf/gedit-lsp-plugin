@@ -153,6 +153,7 @@ def test_code_action_removes_unused_import_end_to_end(
         on_exit: Any,
         on_stderr_line: Any = None,
         cwd: str | None = None,
+        on_request: Any = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
@@ -160,6 +161,7 @@ def test_code_action_removes_unused_import_end_to_end(
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
             cwd=cwd,
+            on_request=on_request,
         )
 
     server = LanguageServer(

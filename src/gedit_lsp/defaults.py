@@ -64,6 +64,7 @@ DEFAULT_TUNABLES: dict[str, Any] = {
         "diagnostics", "hover", "definition", "outline",
         "completion", "signatureHelp", "formatting", "references",
         "rename", "codeAction", "mouseHover", "workspaceSymbol",
+        "progress",
     ],
     "severityIcons": {
         "error":   "dialog-error-symbolic",

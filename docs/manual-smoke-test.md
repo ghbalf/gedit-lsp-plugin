@@ -213,6 +213,21 @@ Python file with an unused import) and verify:
 - [ ] Remove `"workspaceSymbol"` from `enabledFeatures` in your config → `Shift+F3` does nothing (checkbox is functional).
 - [ ] In Preferences the "workspaceSymbol" checkbox is present and unticking it disables the feature.
 
+## `$/progress` (server work-done progress)
+
+Requires a server that emits work-done progress (e.g. `clangd`; pylsp does
+not). Configure `clangd` for C/C++ and open a project with a
+`compile_commands.json`.
+
+- [ ] Open a C/C++ file in a clangd project.
+- [ ] **Expected:** while clangd builds its index, the statusbar shows
+      `LSP: clangd ⚡ · <title>` (with a percentage if the server reports
+      one), e.g. `LSP: clangd ⚡ · indexing… 45%`.
+- [ ] **Expected:** when indexing finishes, the fragment disappears and the
+      statusbar reverts to the plain state glyph `LSP: clangd ⚡`.
+- [ ] Set `"enabledFeatures"` without `"progress"` and restart: the fragment
+      no longer appears (state glyph still shown).
+
 ## Final
 
 - [ ] All boxes ticked.

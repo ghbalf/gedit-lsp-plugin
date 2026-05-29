@@ -81,6 +81,7 @@ def test_workspace_symbol_finds_cross_file_symbol(
         on_exit: Any,
         on_stderr_line: Any = None,
         cwd: str | None = None,
+        on_request: Any = None,
     ) -> RpcClient:
         return RpcClient(
             command=command,
@@ -88,6 +89,7 @@ def test_workspace_symbol_finds_cross_file_symbol(
             on_exit=on_exit,
             on_stderr_line=on_stderr_line,
             cwd=cwd,
+            on_request=on_request,
         )
 
     server = LanguageServer(

@@ -21,6 +21,7 @@ import gi
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib
 
+from gedit_lsp.progress import ProgressTracker
 from gedit_lsp.rpc import RpcClient
 
 
@@ -51,6 +52,7 @@ def real_transport_factory(
     on_exit: Callable[[int], None],
     on_stderr_line: Callable[[str], None] | None = None,
     cwd: str | None = None,
+    on_request: Callable[[dict[str, Any]], None] | None = None,
 ) -> RpcClient:
     return RpcClient(
         command=command,
@@ -58,6 +60,7 @@ def real_transport_factory(
         on_exit=on_exit,
         on_stderr_line=on_stderr_line,
         cwd=cwd,
+        on_request=on_request,
     )
 
 
@@ -112,6 +115,8 @@ class LanguageServer:
         self._idle_source_id: int | None = None
         self._diagnostics_listeners: list[Callable[[dict[str, Any]], None]] = []
         self._state_listeners: list[Callable[[ServerState], None]] = []
+        self._progress = ProgressTracker()
+        self._progress_listeners: list[Callable[[], None]] = []
         self._stderr_buffer: deque[str] = deque(maxlen=stderr_buffer_max_lines)
 
     @property
@@ -197,12 +202,82 @@ class LanguageServer:
 
         return _dispose
 
+    def add_progress_listener(
+        self, callback: Callable[[], None]
+    ) -> Callable[[], None]:
+        """Register a progress listener fired whenever active progress
+        changes. Returns a disposer; call it to remove the listener
+        (calling more than once is a no-op). Same cleanup discipline as
+        the diagnostics/state listeners — dispose on tab-removed/deactivate
+        so closures don't outlive their buffer."""
+        self._progress_listeners.append(callback)
+
+        def _dispose() -> None:
+            with contextlib.suppress(ValueError):
+                self._progress_listeners.remove(callback)
+
+        return _dispose
+
+    def active_progress_fragment(self) -> str | None:
+        """The statusbar fragment for the newest active work-done token,
+        or None when no progress is in flight."""
+        return self._progress.active_fragment()
+
+    def _on_progress(self, msg: dict[str, Any]) -> None:
+        if self._progress.handle(msg.get("params", {})):
+            for cb in self._progress_listeners:
+                cb()
+
     def send_notification(self, method: str, params: Any) -> None:
         if self._transport is None:
             return
         self._transport.send(
             {"jsonrpc": "2.0", "method": method, "params": params}
         )
+
+    def _send_response(self, request_id: Any, result: Any) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {"jsonrpc": "2.0", "id": request_id, "result": result}
+        )
+
+    def _send_error_response(
+        self, request_id: Any, code: int, message: str
+    ) -> None:
+        if self._transport is None:
+            return
+        self._transport.send(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": code, "message": message},
+            }
+        )
+
+    def _on_server_request(self, msg: dict[str, Any]) -> None:
+        """Handle a server→client request. We only invite
+        `window/workDoneProgress/create` (via the advertised
+        `window.workDoneProgress` capability); ack it with `null`. Any other
+        request gets a JSON-RPC `method not found` error so a spec-strict
+        server doesn't stall waiting for a response."""
+        request_id = msg.get("id")
+        if request_id is None:
+            return
+        if msg.get("method") == "window/workDoneProgress/create":
+            self._send_response(request_id, None)
+        else:
+            # We don't implement dynamic capability registration
+            # (client/registerCapability) or workspace/configuration, so any
+            # other server->client request gets a spec-correct MethodNotFound
+            # rather than a faked success (which would make the server believe
+            # a capability is active that we never honor). Our minimal
+            # advertised capabilities mean a well-behaved server won't send
+            # these; proper dynamic-registration handling will arrive with
+            # workspace/didChangeWatchedFiles (a later v0.4.0 item).
+            self._send_error_response(
+                request_id, -32601, f"method not found: {msg.get('method')}"
+            )
 
     def _send_request(
         self,
@@ -249,6 +324,7 @@ class LanguageServer:
     # --- internal ---
 
     def _spawn_and_initialize(self) -> None:
+        self._progress = ProgressTracker()
         self.state = ServerState.STARTING
         log_prefix = f"[{self.language_id}:{Path(self.root_path).name}]"
         self._transport = self._transport_factory(
@@ -257,6 +333,7 @@ class LanguageServer:
             self._handle_subprocess_exit,
             on_stderr_line=self._stderr_buffer.append,
             cwd=self.root_path,
+            on_request=self._on_server_request,
         )
         self._transport.start()
         req_id = next(self._req_ids)
@@ -264,6 +341,7 @@ class LanguageServer:
         self._transport.on_notification(
             "textDocument/publishDiagnostics", self._on_diagnostics
         )
+        self._transport.on_notification("$/progress", self._on_progress)
         self._transport.send(
             {
                 "jsonrpc": "2.0",
@@ -277,7 +355,7 @@ class LanguageServer:
         return {
             "processId": None,
             "rootUri": f"file://{self.root_path}",
-            "capabilities": {},
+            "capabilities": {"window": {"workDoneProgress": True}},
             "initializationOptions": self.initialization_options,
         }
 
